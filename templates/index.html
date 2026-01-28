@@ -1,280 +1,372 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Allocation Application</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Allocation Application</title>
+<style>
+/* Basic CSS for better readability - Using white, black, light grey, dark blue, light blue */
+body {
+font-family: Arial, sans-serif;
+background-color: #f6f2f2; /* Light grey */
+margin: 0;
+padding: 20px;
+display: flex;
+flex-direction: column;
+align-items: center;
+}
+.container {
+background-color: #ffffff; /* White */
+padding: 30px;
+border-radius: 8px;
+box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Slightly darker shadow for contrast */
+width: 100%;
+max-width: 600px;
+box-sizing: border-box;
+margin-bottom: 20px;
+text-align: center; /* Center content within the container */
+}
+.logo {
+width: 250px; /* Increased width to make it 'elongated' (wider) */
+height: auto; /* Maintains aspect ratio */
+margin-bottom: 20px; /* Space between logo and title */
+}
+h1 {
+color: #2c3e50; /* Dark blue */
+text-align: center;
+margin-bottom: 30px;
+}
+.form-group {
+margin-bottom: 15px;
+text-align: left; /* Align labels and inputs to the left */
+}
+label {
+display: block;
+margin-bottom: 5px;
+font-weight: bold;
+color: #333333; /* Dark grey/black */
+}
+input[type="file"] {
+width: 100%;
+padding: 10px;
+border: 1px solid #cccccc; /* Light grey border */
+border-radius: 4px;
+box-sizing: border-box;
+font-size: 1em;
+padding-top: 3px;
+padding-bottom: 3px;
+background-color: #ffffff; /* White background for input */
+}
+button {
+background-color: #0056b3; /* Dark blue */
+color: white;
+padding: 12px 20px;
+border: none;
+border-radius: 4px;
+cursor: pointer;
+font-size: 1.1em;
+width: 100%;
+transition: background-color 0.3s ease;
+}
+button:hover {
+background-color: #003d80; /* Slightly darker blue on hover */
+}
+.flash-messages {
+list-style-type: none;
+padding: 0;
+margin-bottom: 20px;
+width: 100%;
+max-width: 600px;
+}
+.flash-messages li {
+padding: 10px 15px;
+border-radius: 5px;
+margin-bottom: 10px;
+font-weight: bold;
+text-align: left; /* Align flash message text to left */
+}
+/* Using shades of blue for info/success, and a distinct red for error */
+.flash-messages li.error {
+background-color: #f8d7da; /* Light red */
+color: #721c24; /* Dark red */
+border: 1px solid #f5c6cb; /* Red border */
+}
+.flash-messages li.success {
+background-color: #d1ecf1; /* Light blue (info-like) */
+color: #0c5460; /* Dark blue (info-like) */
+border: 1px solid #bee5eb; /* Blue border */
+}
+.flash-messages li.info {
+background-color: #e2f0fb; /* Lighter blue */
+color: #1a4f8a; /* Medium blue */
+border: 1px solid #bce1fb; /* Blue border */
+}
+.flash-messages li.warning { /* Added specific style for warning */
+background-color: #fff3cd; /* Light yellow */
+color: #856404; /* Dark yellow */
+border: 1px solid #ffeeba; /* Yellow border */
+}
+.download-links {
+margin-top: 20px;
+text-align: center;
+}
+.download-links h2 {
+color: #2c3e50; /* Dark blue */
+margin-bottom: 10px;
+}
+.download-links p {
+color: #333333; /* Dark grey/black */
+margin-bottom: 15px;
+}
+.download-links a {
+display: inline-block;
+background-color: #0056b3; /* Light blue */
+color: white;
+padding: 10px 15px;
+border-radius: 4px;
+text-decoration: none;
+margin: 5px;
+transition: background-color 0.3s ease;
+}
+.download-links a:hover {
+background-color: #003d80; /* Darker blue on hover */
+}
 
-    <style>
-        /* Basic CSS for better readability */
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f6f2f2;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+/* Styles for the Modal (Rules Popup) */
+.modal {
+display: none; /* Hidden by default */
+position: fixed; /* Stay in place */
+z-index: 1; /* Sit on top */
+left: 0;
+top: 0;
+width: 100%; /* Full width */
+height: 100%; /* Full height */
+overflow: auto; /* Enable scroll if needed */
+background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+justify-content: center; /* Center content */
+align-items: center; /* Center content */
+}
+.modal-content {
+background-color: #fefefe;
+margin: auto; /* Center horizontally and vertically */
+padding: 20px;
+border: 1px solid #888;
+border-radius: 8px;
+width: 80%; /* Could be smaller or larger */
+max-width: 700px; /* Max width */
+box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
+animation-name: animatetop;
+animation-duration: 0.4s;
+color: #333; /* Default text color for rules content */
+}
+/* Add Animation */
+@keyframes animatetop {
+from {top: -300px; opacity: 0}
+to {top: 0; opacity: 1}
+}
+.close-button {
+color: #aaa;
+float: right;
+font-size: 28px;
+font-weight: bold;
+}
+.close-button:hover,
+.close-button:focus {
+color: black;
+text-decoration: none;
+cursor: pointer;
+}
+.modal-content h2 {
+color: #2c3e50; /* Dark blue for modal title */
+margin-top: 0;
+text-align: left;
+margin-bottom: 20px;
+}
+.modal-content ul {
+list-style-type: decimal;
+text-align: left;
+margin-left: 25px; /* Adjust indent for list items */
+padding-left: 0;
+}
+.modal-content ul li {
+margin-bottom: 12px; /* More space between rules */
+line-height: 1.4;
+color: #333; /* Black for general list items */
+font-size: 1em; /* Default font size for main list items */
+}
+.modal-content ul li strong {
+color: #0056b3; /* Dark blue for bold text within rules */
+font-weight: bold; /* Explicitly ensure bold */
+}
+/* For sub-lists within rules */
+.modal-content ul ul {
+list-style-type: disc; /* Use bullets for sub-lists */
+margin-top: 8px;
+margin-bottom: 8px;
+margin-left: 20px; /* Indent sub-list further */
+}
+.modal-content ul ul li {
+margin-bottom: 5px; /* Less space for sub-list items */
+color: #333; /* Black for sub-list items */
+font-size: 0.9em; /* One size smaller for sub-list items */
+}
+.rules-link {
+display: block;
+text-align: right;
+margin-top: -20px; /* Adjust as needed to position it */
+margin-bottom: 15px;
+}
+.rules-link a {
+color: #0056b3;
+text-decoration: none;
+font-weight: bold;
+}
+.rules-link a:hover {
+text-decoration: underline;
+}
 
-        .container {
-            background-color: #ffffff;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 600px;
-            box-sizing: border-box;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .logo {
-            width: 250px;
-            height: auto;
-            margin-bottom: 20px;
-        }
-
-        h1 {
-            color: #2c3e50;
-            margin-bottom: 30px;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-            text-align: left;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #333;
-        }
-
-        input[type="file"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box;
-            font-size: 1em;
-            background-color: #fff;
-        }
-
-        button {
-            background-color: #0056b3;
-            color: white;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 1.1em;
-            width: 100%;
-        }
-
-        button:hover {
-            background-color: #003d80;
-        }
-
-        .flash-messages {
-            list-style-type: none;
-            padding: 0;
-            margin-bottom: 20px;
-            width: 100%;
-            max-width: 600px;
-        }
-
-        .flash-messages li {
-            padding: 10px 15px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            font-weight: bold;
-            text-align: left;
-        }
-
-        .flash-messages li.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .flash-messages li.success {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-
-        .flash-messages li.info {
-            background-color: #e2f0fb;
-            color: #1a4f8a;
-            border: 1px solid #bce1fb;
-        }
-
-        .download-links {
-            margin-top: 20px;
-            text-align: center;
-        }
-
-        .rules-link {
-            display: block;
-            text-align: right;
-            margin-bottom: 15px;
-        }
-
-        .rules-link a {
-            color: #0056b3;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        .navigation-links {
-            margin-top: 20px;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-
-        .navigation-links a {
-            display: inline-block;
-            background-color: #28a745;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 4px;
-            text-decoration: none;
-            margin: 5px 10px;
-            font-weight: bold;
-        }
-
-        /* Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.4);
-            justify-content: center;
-            align-items: center;
-        }
-
-        .modal-content {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            width: 80%;
-            max-width: 700px;
-        }
-
-        .close-button {
-            float: right;
-            font-size: 28px;
-            cursor: pointer;
-        }
-    </style>
+</style>
 </head>
-
 <body>
-    <div class="container">
+<div class="container">
+<!-- Bosch Image.png added here -->
+<!-- Make sure the filename is correct based on what you have in static/images/ -->
+<img src="{{ url_for('static', filename='images/Bosch.png') }}" alt="Bosch Logo" class="logo">
+<h1>B-SEGMENT ALLOCATION</h1>
 
-        <img src="{{ url_for('static', filename='images/Bosch.png') }}"
-             alt="Bosch Logo"
-             class="logo">
+<div class="rules-link">
+<a href="#" id="openRulesModal">View Rules & Instructions</a>
+</div>
 
-        <h1>B-SEGMENT ALLOCATION</h1>
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<ul class="flash-messages">
+{% for category, message in messages %}
+<li class="{{ category }}">{{ message }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endwith %}
 
-        <div class="rules-link">
-            <a href="#" id="openRulesModal">View Rules & Instructions</a>
-        </div>
+<form action="/process" method="post" enctype="multipart/form-data">
+<div class="form-group">
+<label for="pisa_file">Upload PISA Excel File (.xlsx):</label>
+<input type="file" name="pisa_file" id="pisa_file" accept=".xlsx" required>
+</div>
+<div class="form-group">
+<label for="esm_file">Upload ESM Excel File (.xlsx):</label>
+<input type="file" name="esm_file" id="esm_file" accept=".xlsx" required>
+</div>
+<div class="form-group">
+<label for="pm7_file">Upload PM7 Excel File (.xlsx):</label>
+<input type="file" name="pm7_file" id="pm7_file" accept=".xlsx" required>
+</div>
+<div class="form-group">
+<label for="workon_file">Upload Workon P71 Excel File (.xlsx):</label> {# Added (Optional) to label #}
+<input type="file" name="workon_file" id="workon_file" accept=".xlsx"> {# REMOVED required attribute #}
+</div>
+<div class="form-group">
+<label for="workon_rgba_file">Upload Workon RGBA Excel File (.xlsx):</label> {# Added (Optional) to label #}
+<input type="file" name="workon_rgba_file" id="workon_rgba_file" accept=".xlsx"> {# REMOVED required attribute #}
+</div>
+<div class="form-group">
+<label for="central_file">Upload Central Excel File (.xlsx):</label>
+<input type="file" name="central_file" id="central_file" accept=".xlsx" required>
+</div>
+<button type="submit">Process Files</button>
+</form>
 
-        <div class="navigation-links">
-            <a href="{{ url_for('pmd_lookup.pmd_lookup_index') }}">
-                PMD Lookup Automation
-            </a>
-        </div>
+{% if central_download_link %}
+<div class="download-links">
+<h2>Processing Complete!</h2>
+<p>Your processed file is ready:</p>
+<a href="{{ central_download_link }}" download>Download Updated Central File</a>
+</div>
+{% endif %}
+</div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <ul class="flash-messages">
-                    {% for category, message in messages %}
-                        <li class="{{ category }}">{{ message }}</li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
-        {% endwith %}
+<!-- The Modal (Rules Popup) -->
+<div id="rulesModal" class="modal">
+<div class="modal-content">
+<span class="close-button">&times;</span>
+<h2>Allocation Application Rules & Guidelines</h2>
+<ul>
+<li>All uploaded files <strong>must be in .xlsx format</strong>.</li>
+<li><strong>Tracker File Download:</strong> Download the tracker file when nobody is actively using it. Navigate to:
+<strong>Teams channel</strong> &rarr; <strong>General</strong> &rarr; <strong>Files</strong> &rarr; <strong>PBI_Database</strong> &rarr; <strong>B-Segment</strong> &rarr; <code>New B_Segment(yesterday's date).xlsx</code></li>
+<li><strong>Tracker File Columns:</strong> Ensure the tracker file (Central File) contains the following columns with <strong>exact naming</strong> (case-sensitive and including spaces):<br>
+<code>Barcode</code>, <code>Processor</code>, <code>Channel</code>, <code>Category</code>, <code>Company code</code>, <code>Region</code>, <code>Vendor number</code>, <code>Vendor Name</code>, <code>Status</code>, <code>Received Date</code>, <code>Re-Open Date</code>, <code>Allocation Date</code>, <code>Clarification Date</code>, <code>Completion Date</code>, <code>Requester</code>, <code>Remarks</code>, <code>Aging</code>, <code>Today</code>.<br>
+<strong>No filters should be applied</strong> in the downloaded tracker file.</li>
+<li><strong>ESM Mandatory Columns:</strong> After internal processing, the ESM file should contain the following columns:
+<ul>
+<li><strong>Company code</strong> (with a space after company)</li>
+<li><strong>Subcategory</strong> (with no spacing between the words)</li>
+<li><strong>Received date</strong> (with a space after received, mapped from 'Updated')</li>
+</ul>
+</li>
+<li><strong>PISA Mandatory Columns:</strong> After internal processing, the PISA file should contain the following columns:
+<ul>
+<li><strong>Vendor name</strong> (with a space after vendor)</li>
+<li><strong>Vendor number</strong> (with a space after vendor)</li>
+<li><strong>Company code</strong> (with a space after company)</li>
+<li><strong>Received date</strong> (with a space after received, mapped from 'Creation date')</li>
+</ul>
+</li>
+<li><strong>PM7 Mandatory Columns:</strong> After internal processing, the PM7 file should contain the following columns:
+<ul>
+<li><strong>Vendor name</strong> (with a space after vendor)</li>
+<li><strong>Vendor number</strong> (with a space after vendor)</li>
+<li><strong>Company code</strong> (with a space after company)</li>
+<li><strong>Received date</strong> (with a space after received, mapped from 'Creation date')</li>
+</ul>
+</li>
+<li><strong>Workon P71 Mandatory Columns & Mapping:</strong> If provided, the Workon P71 file will be appended to the finalized Central File. The columns are same as in the downloaded dump.  
+                    </ul>
+</li>
+{# NEW SECTION FOR WORKON RGBA #}
+<li><strong>Workon RGBA Mandatory Columns, Filter & Mapping :</strong> If provided, the Workon RGBA file will be filtered and appended to the finalized Central File.
+<p><strong>Filter Condition:</strong> Only records where <code>Current Assignee</code> is "VMD GS OSP-NA (GS/OMD-APAC)" will be processed.</p>
+<p>The columns are same as in the downloaded dump.</p>
+<ul>
+</ul>
+</li>
+<li><strong>Processing & Upload:</strong> Upload the ESM, PISA, PM7, and Central files. Optionally upload Workon P71 and Workon RGBA files. Then, click on the <strong>"Process Files"</strong> button. The new updated tracker file will be automatically downloaded and will be ready for allocation.</li>
+<li><strong>Post-Processing Actions:</strong>
+<ul>
+<li><strong>Rename & Upload:</strong> Replace the newly downloaded file by renaming it to <code>New B_Segment(DD_MM_YYYY)</code> with <strong>today's date</strong> in the Teams channel.</li>
+<li><strong>Archive Old File:</strong> Move the <code>New B_Segment(DD_MM_YYYY)</code> with <strong>yesterday's date</strong> into the <strong><code>Old Data (Do not Modify)</code> folder</strong>.</li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
 
-        <form action="{{ url_for('process_files') }}"
-              method="post"
-              enctype="multipart/form-data">
+<script>
+// Get the modal
+var modal = document.getElementById("rulesModal");
 
-            <div class="form-group">
-                <label for="pisa_file">Upload PISA Excel File (.xlsx):</label>
-                <input type="file" name="pisa_file" id="pisa_file" required>
-            </div>
+// Get the button that opens the modal
+var btn = document.getElementById("openRulesModal");
 
-            <div class="form-group">
-                <label for="esm_file">Upload ESM Excel File (.xlsx):</label>
-                <input type="file" name="esm_file" id="esm_file" required>
-            </div>
+// Get the <span> element that closes the modal
+var span = document.getElementsByClassName("close-button")[0];
 
-            <div class="form-group">
-                <label for="pm7_file">Upload PM7 Excel File (.xlsx):</label>
-                <input type="file" name="pm7_file" id="pm7_file" required>
-            </div>
+// When the user clicks the button, open the modal
+btn.onclick = function() {
+modal.style.display = "flex"; // Use flex to center
+}
 
-            <div class="form-group">
-                <label for="smd_file">Upload SMD Excel File (.xlsx):</label>
-                <input type="file" name="smd_file" id="smd_file" required>
-            </div>
+// When the user clicks on <span> (x), close the modal
+span.onclick = function() {
+modal.style.display = "none";
+}
 
-            <div class="form-group">
-                <label for="workon_file">Upload Workon P71 Excel File (Optional):</label>
-                <input type="file" name="workon_file" id="workon_file">
-            </div>
-
-            <div class="form-group">
-                <label for="workon_rgba_file">Upload Workon RGBA Excel File (Optional):</label>
-                <input type="file" name="workon_rgba_file" id="workon_rgba_file">
-            </div>
-
-            <div class="form-group">
-                <label for="central_file">Upload Central Excel File (.xlsx):</label>
-                <input type="file" name="central_file" id="central_file" required>
-            </div>
-
-            <button type="submit">Process Files</button>
-        </form>
-
-    </div>
-
-    <!-- Modal -->
-    <div id="rulesModal" class="modal">
-        <div class="modal-content">
-            <span class="close-button">&times;</span>
-            <h2>Allocation Application Rules & Guidelines</h2>
-            <!-- rules list unchanged -->
-        </div>
-    </div>
-
-    <script>
-        var modal = document.getElementById("rulesModal");
-        var btn = document.getElementById("openRulesModal");
-        var span = document.getElementsByClassName("close-button")[0];
-
-        btn.onclick = function () {
-            modal.style.display = "flex";
-        };
-
-        span.onclick = function () {
-            modal.style.display = "none";
-        };
-
-        window.onclick = function (event) {
-            if (event.target === modal) {
-                modal.style.display = "none";
-            }
-        };
-    </script>
+// When the user clicks anywhere outside of the modal, close it
+window.onclick = function(event) {
+if (event.target == modal) {
+modal.style.display = "none";
+}
+}
+</script>
 </body>
 </html>
