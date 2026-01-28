@@ -7,6 +7,7 @@ import tempfile
 import re
 from flask import Flask, request, render_template, redirect, url_for, send_file, flash, session
 from werkzeug.utils import secure_filename
+import logging
 
 warnings.filterwarnings('ignore')
 
@@ -27,6 +28,22 @@ CONSOLIDATED_OUTPUT_COLUMNS = [
     'Allocation Date', 'Clarification Date', 'Completion Date', 'Requester',
     'Remarks', 'Aging', 'Today'
 ]
+
+PMD_OUTPUT_COLUMNS = [
+    'Valid From', 'Bukr.', 'Type', 'EBSNO', 'Supplier Name', 'Street', 'City',
+    'Country', 'Zip Code', 'Requested By', 'Pur. approver', 'Pur. release date'
+]
+
+
+# --- Configure Logging ---
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    handlers=[
+                        logging.FileHandler("app_log.log"),
+                        logging.StreamHandler()
+                    ])
+logger = logging.getLogger(__name__)
+
 
 # --- Helper Functions ---
 
@@ -85,12 +102,14 @@ def clean_col_name_str(col_name):
     col = col.strip('_')
     return col
 
+# --- Data Processing Functions (Existing Channels) ---
+
 def consolidate_data_process(df_pisa, df_esm, df_pm7):
     """
     Reads PISA, ESM, and PM7 Excel files (now passed as DFs), filters PISA, consolidates data.
     Returns the consolidated DataFrame.
     """
-    print("Starting data consolidation process for PISA, ESM, PM7...")
+    logger.info("Starting data consolidation process for PISA, ESM, PM7...")
 
     df_pisa = clean_column_names(df_pisa.copy())
     df_esm = clean_column_names(df_esm.copy())
@@ -100,9 +119,9 @@ def consolidate_data_process(df_pisa, df_esm, df_pm7):
     if 'assigned_user' in df_pisa.columns:
         original_pisa_count = len(df_pisa)
         df_pisa_filtered = df_pisa[df_pisa['assigned_user'].isin(allowed_pisa_users)].copy()
-        print(f"\nPISA file filtered. Original records: {original_pisa_count}, Records after filter: {len(df_pisa_filtered)}")
+        logger.info(f"PISA file filtered. Original records: {original_pisa_count}, Records after filter: {len(df_pisa_filtered)}")
     else:
-        print("\nWarning: 'assigned_user' column not found in PISA file (after cleaning). No filter applied.")
+        logger.warning("'assigned_user' column not found in PISA file (after cleaning). No filter applied.")
         df_pisa_filtered = df_pisa.copy()
 
     all_consolidated_rows = []
@@ -110,7 +129,7 @@ def consolidate_data_process(df_pisa, df_esm, df_pm7):
 
     # --- PISA Processing ---
     if 'barcode' not in df_pisa_filtered.columns:
-        print("Error: 'barcode' column not found in PISA file (after cleaning). Skipping PISA processing.")
+        logger.error("Error: 'barcode' column not found in PISA file (after cleaning). Skipping PISA processing.")
     else:
         df_pisa_filtered['barcode'] = df_pisa_filtered['barcode'].astype(str)
         for index, row in df_pisa_filtered.iterrows():
@@ -127,11 +146,11 @@ def consolidate_data_process(df_pisa, df_esm, df_pm7):
                 'Processor': None, 'Category': None
             }
             all_consolidated_rows.append(new_row)
-        print(f"Collected {len(df_pisa_filtered)} rows from PISA.")
+        logger.info(f"Collected {len(df_pisa_filtered)} rows from PISA.")
 
     # --- ESM Processing ---
     if 'barcode' not in df_esm.columns:
-        print("Error: 'barcode' column not found in ESM file (after cleaning). Skipping ESM processing.")
+        logger.error("Error: 'barcode' column not found in ESM file (after cleaning). Skipping ESM processing.")
     else:
         df_esm['barcode'] = df_esm['barcode'].astype(str)
         for index, row in df_esm.iterrows():
@@ -152,11 +171,11 @@ def consolidate_data_process(df_pisa, df_esm, df_pm7):
                 'Category': None
             }
             all_consolidated_rows.append(new_row)
-        print(f"Collected {len(df_esm)} rows from ESM.")
+        logger.info(f"Collected {len(df_esm)} rows from ESM.")
 
     # --- PM7 Processing ---
     if 'barcode' not in df_pm7.columns:
-        print("Error: 'barcode' column not found in PM7 file (after cleaning). Skipping PM7 processing.")
+        logger.error("Error: 'barcode' column not found in PM7 file (after cleaning). Skipping PM7 processing.")
     else:
         df_pm7['barcode'] = df_pm7['barcode'].astype(str)
 
@@ -177,13 +196,13 @@ def consolidate_data_process(df_pisa, df_esm, df_pm7):
                 'Processor': None, 'Category': None
             }
             all_consolidated_rows.append(new_row)
-        print(f"Collected {len(df_pm7)} rows from PM7.")
+        logger.info(f"Collected {len(df_pm7)} rows from PM7.")
 
     if not all_consolidated_rows:
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS) # Return empty DF if no data
 
     df_consolidated = pd.DataFrame(all_consolidated_rows)
-    print("--- PISA, ESM, PM7 Consolidation Complete ---")
+    logger.info("--- PISA, ESM, PM7 Consolidation Complete ---")
     return df_consolidated
 
 
@@ -191,14 +210,14 @@ def process_central_file_step2_update_existing(consolidated_df_pisa_esm_pm7, cen
     """
     Step 2: Updates status of *existing* central file records based on PISA/ESM/PM7 consolidated data.
     """
-    print(f"\n--- Starting Central File Status Processing (Step 2: Update Existing Barcodes from PISA/ESM/PM7) ---")
+    logger.info(f"\n--- Starting Central File Status Processing (Step 2: Update Existing Barcodes from PISA/ESM/PM7) ---")
 
     try:
         converters = {'Barcode': str, 'Vendor number': str, 'Company code': str}
         df_central = pd.read_excel(central_file_input_path, converters=converters, keep_default_na=False)
         df_central_cleaned = clean_column_names(df_central.copy())
 
-        print("PISA/ESM/PM7 Consolidated (DF) and Central (file) loaded successfully for Step 2!")
+        logger.info("PISA/ESM/PM7 Consolidated (DF) and Central (file) loaded successfully for Step 2!")
     except Exception as e:
         return False, f"Error loading PISA/ESM/PM7 Consolidated (DF) or Central (file) for processing (Step 2): {e}"
 
@@ -213,7 +232,7 @@ def process_central_file_step2_update_existing(consolidated_df_pisa_esm_pm7, cen
     df_central_cleaned['Barcode_compare'] = df_central_cleaned['barcode']
 
     consolidated_barcodes_set = set(consolidated_df_pisa_esm_pm7['Barcode'].unique())
-    print(f"Found {len(consolidated_barcodes_set)} unique barcodes in the PISA/ESM/PM7 consolidated file for Step 2.")
+    logger.info(f"Found {len(consolidated_barcodes_set)} unique barcodes in the PISA/ESM/PM7 consolidated file for Step 2.")
 
     def transform_status_if_barcode_exists(row):
         central_barcode = str(row['Barcode_compare'])
@@ -239,7 +258,7 @@ def process_central_file_step2_update_existing(consolidated_df_pisa_esm_pm7, cen
     df_central_cleaned['status'] = df_central_cleaned.apply(transform_status_if_barcode_exists, axis=1)
     df_central_cleaned = df_central_cleaned.drop(columns=['Barcode_compare'])
 
-    print(f"Updated 'status' column in central file for Step 2 for {len(df_central_cleaned)} records.")
+    logger.info(f"Updated 'status' column in central file for Step 2 for {len(df_central_cleaned)} records.")
 
     try:
         # Re-map cleaned names back to desired output names
@@ -264,7 +283,7 @@ def process_central_file_step2_update_existing(consolidated_df_pisa_esm_pm7, cen
 
     except Exception as e:
         return False, f"Error processing central file (Step 2): {e}"
-    print(f"--- Central File Status Processing (Step 2) Complete ---")
+    logger.info(f"--- Central File Status Processing (Step 2) Complete ---")
     return True, df_central_cleaned[CONSOLIDATED_OUTPUT_COLUMNS] # Ensure output has all required columns
 
 def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa_esm_pm7, updated_existing_central_df, df_pisa_original, df_esm_original, df_pm7_original, region_mapping_df):
@@ -273,7 +292,7 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
             and barcodes present only in central (marks them as 'Needs Review' if not 'Completed').
             Also performs region mapping.
     """
-    print(f"\n--- Starting Central File Status Processing (Step 3: Final Merge & Needs Review from PISA/ESM/PM7) ---")
+    logger.info(f"\n--- Starting Central File Status Processing (Step 3: Final Merge & Needs Review from PISA/ESM/PM7) ---")
 
     df_pisa_lookup = clean_column_names(df_pisa_original.copy())
     df_esm_lookup = clean_column_names(df_esm_original.copy())
@@ -283,25 +302,25 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
     if 'barcode' in df_pisa_lookup.columns:
         df_pisa_lookup['barcode'] = df_pisa_lookup['barcode'].astype(str)
         df_pisa_indexed = df_pisa_lookup.set_index('barcode')
-        print(f"PISA lookup indexed by 'barcode'.")
+        logger.info(f"PISA lookup indexed by 'barcode'.")
     else:
-        print("Warning: 'barcode' column not found in cleaned PISA lookup. Cannot perform PISA lookups.")
+        logger.warning("Warning: 'barcode' column not found in cleaned PISA lookup. Cannot perform PISA lookups.")
 
     df_esm_indexed = pd.DataFrame()
     if 'barcode' in df_esm_lookup.columns:
         df_esm_lookup['barcode'] = df_esm_lookup['barcode'].astype(str)
         df_esm_indexed = df_esm_lookup.set_index('barcode')
-        print(f"ESM lookup indexed by 'barcode'.")
+        logger.info(f"ESM lookup indexed by 'barcode'.")
     else:
-        print("Warning: 'barcode' column not found in cleaned ESM lookup. Cannot perform ESM lookups.")
+        logger.warning("Warning: 'barcode' column not found in cleaned ESM lookup. Cannot perform ESM lookups.")
 
     df_pm7_indexed = pd.DataFrame()
     if 'barcode' in df_pm7_lookup.columns:
         df_pm7_lookup['barcode'] = df_pm7_lookup['barcode'].astype(str)
         df_pm7_indexed = df_pm7_lookup.set_index('barcode')
-        print(f"PM7 lookup indexed by 'barcode'.")
+        logger.info(f"PM7 lookup indexed by 'barcode'.")
     else:
-        print("Warning: 'barcode' column not found in cleaned PM7 lookup. Cannot perform PM7 lookups.")
+        logger.warning("Warning: 'barcode' column not found in cleaned PM7 lookup. Cannot perform PM7 lookups.")
 
     if 'Barcode' not in consolidated_df_pisa_esm_pm7.columns:
         return False, "Error: 'Barcode' column not found in the consolidated file. Cannot proceed with final central file processing (Step 3)."
@@ -312,7 +331,7 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
     central_barcodes_set = set(updated_existing_central_df['Barcode'].unique())
 
     barcodes_to_add = consolidated_barcodes_set - central_barcodes_set
-    print(f"Found {len(barcodes_to_add)} new barcodes in PISA/ESM/PM7 consolidated file to add to central.")
+    logger.info(f"Found {len(barcodes_to_add)} new barcodes in PISA/ESM/PM7 consolidated file to add to central.")
 
     df_new_records_from_consolidated = consolidated_df_pisa_esm_pm7[consolidated_df_pisa_esm_pm7['Barcode'].isin(barcodes_to_add)].copy()
 
@@ -385,7 +404,7 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
             df_new_central_rows[col] = df_new_central_rows[col].astype(str).replace('nan', '')
 
     barcodes_for_needs_review = central_barcodes_set - consolidated_barcodes_set
-    print(f"Found {len(barcodes_for_needs_review)} barcodes in central not in PISA/ESM/PM7 consolidated.")
+    logger.info(f"Found {len(barcodes_for_needs_review)} barcodes in central not in PISA/ESM/PM7 consolidated.")
 
     df_final_central = updated_existing_central_df.copy()
 
@@ -394,7 +413,7 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
     final_needs_review_condition = needs_review_barcode_mask & is_not_completed_status_mask
 
     df_final_central.loc[final_needs_review_condition, 'Status'] = 'Needs Review'
-    print(f"Updated {final_needs_review_condition.sum()} records to 'Needs Review' where status was not 'Completed'.")
+    logger.info(f"Updated {final_needs_review_condition.sum()} records to 'Needs Review' where status was not 'Completed'.")
 
     # Ensure all CONSOLIDATED_OUTPUT_COLUMNS are present in df_final_central before concat
     for col in CONSOLIDATED_OUTPUT_COLUMNS:
@@ -406,26 +425,26 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
     df_final_central = pd.concat([df_final_central, df_new_central_rows], ignore_index=True)
 
     # --- PM7 Company Code population logic ---
-    print("\n--- Applying PM7 Company Code population logic ---")
+    logger.info("\n--- Applying PM7 Company Code population logic ---")
     if 'Channel' in df_final_central.columns and 'Company code' in df_final_central.columns and 'Barcode' in df_final_central.columns:
         pm7_blank_cc_mask = (df_final_central['Channel'] == 'PM7') & \
                             (df_final_central['Company code'].astype(str).replace('nan', '').str.strip() == '')
 
         df_final_central.loc[pm7_blank_cc_mask, 'Company code'] = \
             df_final_central.loc[pm7_blank_cc_mask, 'Barcode'].astype(str).str[:4]
-        print(f"Populated Company Code for {pm7_blank_cc_mask.sum()} PM7 records based on Barcode.")
+        logger.info(f"Populated Company Code for {pm7_blank_cc_mask.sum()} PM7 records based on Barcode.")
     else:
-        print("Warning: 'Channel', 'Company code', or 'Barcode' columns missing. Skipping PM7 Company Code population logic.")
+        logger.warning("Warning: 'Channel', 'Company code', or 'Barcode' columns missing. Skipping PM7 Company Code population logic.")
 
     # --- REGION MAPPING LOGIC --- (Applied here for PISA/ESM/PM7 and then for Workon RGBA below)
-    print("\n--- Applying Region Mapping ---")
+    logger.info("\n--- Applying Region Mapping ---")
     if region_mapping_df is None or region_mapping_df.empty:
-        print("Warning: Region mapping file not provided or is empty. Region column will not be populated for PISA/ESM/PM7 data.")
+        logger.warning("Warning: Region mapping file not provided or is empty. Region column will not be populated for PISA/ESM/PM7 data.")
         df_final_central['Region'] = df_final_central['Region'].fillna('')
     else:
         region_mapping_df = clean_column_names(region_mapping_df.copy())
         if 'r3_coco' not in region_mapping_df.columns or 'region' not in region_mapping_df.columns:
-            print("Error: Region mapping file must contain 'r3_coco' and 'region' columns after cleaning. Skipping region mapping for PISA/ESM/PM7 data.")
+            logger.error("Error: Region mapping file must contain 'r3_coco' and 'region' columns after cleaning. Skipping region mapping for PISA/ESM/PM7 data.")
             df_final_central['Region'] = df_final_central['Region'].fillna('')
         else:
             # Store the region_map for later use with RGBA and other data
@@ -436,16 +455,16 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
                     global_region_map[coco_key[:4]] = str(row['region']).strip()
             session['region_map'] = global_region_map # Store in session to pass to other functions
 
-            print(f"Loaded {len(global_region_map)} unique R/3 CoCo -> Region mappings.")
+            logger.info(f"Loaded {len(global_region_map)} unique R/3 CoCo -> Region mappings.")
 
             if 'Company code' in df_final_central.columns:
                 # Apply mapping to current df_final_central (PISA/ESM/PM7 data)
                 df_final_central['Company code'] = df_final_central['Company code'].astype(str).str.strip().str.upper().str[:4]
                 df_final_central['Region'] = df_final_central['Company code'].map(global_region_map).fillna(df_final_central['Region'])
                 df_final_central['Region'] = df_final_central['Region'].fillna('')
-                print("Region mapping applied successfully to PISA/ESM/PM7 data.")
+                logger.info("Region mapping applied successfully to PISA/ESM/PM7 data.")
             else:
-                print("Warning: 'Company code' column not found in PISA/ESM/PM7 consolidated DataFrame. Cannot apply region mapping.")
+                logger.warning("Warning: 'Company code' column not found in PISA/ESM/PM7 consolidated DataFrame. Cannot apply region mapping.")
                 df_final_central['Region'] = df_final_central['Region'].fillna('')
 
     # Format date columns after all data merges
@@ -461,7 +480,7 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
         elif col in ['Barcode', 'Vendor number', 'Company code']: # Also ensure company code is treated as string
             df_final_central[col] = df_final_central[col].astype(str).replace('nan', '')
 
-    print(f"--- Central File Status Processing (Step 3) Complete ---")
+    logger.info(f"--- Central File Status Processing (Step 3) Complete ---")
     return True, df_final_central
 
 
@@ -470,9 +489,9 @@ def map_workon_columns(df_workon_raw):
     Maps columns from the raw Workon P71 DataFrame to the CONSOLIDATED_OUTPUT_COLUMNS format.
     Handles robust column finding.
     """
-    print("\n--- Starting Workon P71 Data Mapping ---")
+    logger.info("\n--- Starting Workon P71 Data Mapping ---")
     if df_workon_raw.empty:
-        print("Workon P71 DataFrame is empty. Skipping mapping.")
+        logger.info("Workon P71 DataFrame is empty. Skipping mapping.")
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
 
     df_workon = clean_column_names(df_workon_raw.copy()) # Clean column names for consistency
@@ -501,7 +520,7 @@ def map_workon_columns(df_workon_raw):
     # Status is also essential as it's a core output column and might be used in logic later
     if not all(workon_column_map[k] for k in ['Barcode', 'Status', 'Received Date']):
         missing_cols = [k for k, v in workon_column_map.items() if k in ['Barcode', 'Status', 'Received Date'] and v is None]
-        print(f"Error: Missing essential Workon P71 columns for mapping: {missing_cols}. Skipping Workon processing.")
+        logger.error(f"Error: Missing essential Workon P71 columns for mapping: {missing_cols}. Skipping Workon processing.")
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
 
 
@@ -537,8 +556,8 @@ def map_workon_columns(df_workon_raw):
         mapped_rows.append(new_row_data)
 
     df_mapped_workon = pd.DataFrame(mapped_rows, columns=CONSOLIDATED_OUTPUT_COLUMNS)
-    print(f"Mapped {len(df_mapped_workon)} rows from Workon P71.")
-    print("--- Workon P71 Data Mapping Complete ---")
+    logger.info(f"Mapped {len(df_mapped_workon)} rows from Workon P71.")
+    logger.info("--- Workon P71 Data Mapping Complete ---")
     return df_mapped_workon
 
 
@@ -548,9 +567,9 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
     Filters by 'Current Assignee' and handles robust column finding.
     Applies region mapping.
     """
-    print("\n--- Starting Workon RGBA Data Mapping ---")
+    logger.info("\n--- Starting Workon RGBA Data Mapping ---")
     if df_workon_rgba_raw.empty:
-        print("Workon RGBA DataFrame is empty. Skipping mapping.")
+        logger.info("Workon RGBA DataFrame is empty. Skipping mapping.")
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
 
     df_workon_rgba = clean_column_names(df_workon_rgba_raw.copy()) # Clean column names for internal use
@@ -568,16 +587,16 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
             df_workon_rgba_filtered = df_workon_rgba[
                 df_workon_rgba[cleaned_current_assignee_col] == "VMD GS OSP-NA (GS/OMD-APAC)"
             ].copy()
-            print(f"Workon RGBA file filtered. Original records: {original_rgba_count}, Filtered records: {len(df_workon_rgba_filtered)}")
+            logger.info(f"Workon RGBA file filtered. Original records: {original_rgba_count}, Filtered records: {len(df_workon_rgba_filtered)}")
         else:
-            print(f"Warning: Cleaned 'Current Assignee' column '{cleaned_current_assignee_col}' not found in Workon RGBA. No filter applied.")
+            logger.warning(f"Warning: Cleaned 'Current Assignee' column '{cleaned_current_assignee_col}' not found in Workon RGBA. No filter applied.")
             df_workon_rgba_filtered = df_workon_rgba.copy()
     else:
-        print("Warning: 'Current Assignee' column not found in Workon RGBA file. No filter applied.")
+        logger.warning("Warning: 'Current Assignee' column not found in Workon RGBA file. No filter applied.")
         df_workon_rgba_filtered = df_workon_rgba.copy()
 
     if df_workon_rgba_filtered.empty:
-        print("Workon RGBA DataFrame is empty after filtering. Skipping mapping.")
+        logger.info("Workon RGBA DataFrame is empty after filtering. Skipping mapping.")
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
 
     mapped_rows = []
@@ -600,7 +619,7 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
     # Validate essential columns
     if not all(workon_rgba_column_map[k] for k in ['Barcode', 'Received Date']): # Status is not mandatory for RGBA as per request
         missing_cols = [k for k, v in workon_rgba_column_map.items() if k in ['Barcode', 'Received Date'] and v is None]
-        print(f"Error: Missing essential Workon RGBA columns for mapping: {missing_cols}. Skipping Workon RGBA processing.")
+        logger.error(f"Error: Missing essential Workon RGBA columns for mapping: {missing_cols}. Skipping Workon RGBA processing.")
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
 
     for index, row in df_workon_rgba_filtered.iterrows(): # Iterate over the cleaned and filtered df
@@ -642,13 +661,13 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
         df_mapped_workon_rgba['Company code'] = df_mapped_workon_rgba['Company code'].astype(str).str.strip().str.upper().str[:4]
         df_mapped_workon_rgba['Region'] = df_mapped_workon_rgba['Company code'].map(region_map).fillna(df_mapped_workon_rgba['Region'])
         df_mapped_workon_rgba['Region'] = df_mapped_workon_rgba['Region'].fillna('')
-        print(f"Region mapping applied to {len(df_mapped_workon_rgba)} Workon RGBA records.")
+        logger.info(f"Region mapping applied to {len(df_mapped_workon_rgba)} Workon RGBA records.")
     else:
-        print("Warning: Region mapping not applied to Workon RGBA data (mapping data not available or 'Company code' missing).")
+        logger.warning("Warning: Region mapping not applied to Workon RGBA data (mapping data not available or 'Company code' missing).")
         df_mapped_workon_rgba['Region'] = df_mapped_workon_rgba['Region'].fillna('') # Ensure it's not NaN
 
-    print(f"Mapped {len(df_mapped_workon_rgba)} rows from Workon RGBA.")
-    print("--- Workon RGBA Data Mapping Complete ---")
+    logger.info(f"Mapped {len(df_mapped_workon_rgba)} rows from Workon RGBA.")
+    logger.info("--- Workon RGBA Data Mapping Complete ---")
     return df_mapped_workon_rgba
 
 def map_smd_columns(df_smd_raw):
@@ -656,9 +675,9 @@ def map_smd_columns(df_smd_raw):
     Maps columns from the raw SMD DataFrame to the CONSOLIDATED_OUTPUT_COLUMNS format.
     Handles robust column finding and hardcoded values.
     """
-    print("\n--- Starting SMD Data Mapping ---")
+    logger.info("\n--- Starting SMD Data Mapping ---")
     if df_smd_raw.empty:
-        print("SMD DataFrame is empty. Skipping mapping.")
+        logger.info("SMD DataFrame is empty. Skipping mapping.")
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
 
     df_smd = clean_column_names(df_smd_raw.copy())
@@ -679,10 +698,6 @@ def map_smd_columns(df_smd_raw):
         # will be blank by default initialization
     }
 
-    # Validate essential columns for mapping (if any are critical, e.g., 'Ekorg')
-    # For SMD, we'll assume no columns are strictly mandatory for the process to continue,
-    # as the requirement is "rule free" and "just map". If Ekorg is missing, that column will be blank.
-
     for index, row in df_smd.iterrows():
         new_row_data = {col: '' for col in CONSOLIDATED_OUTPUT_COLUMNS} # Initialize all with blank
 
@@ -692,6 +707,7 @@ def map_smd_columns(df_smd_raw):
         new_row_data['Today'] = today_date_formatted
 
         # Mapped values
+        # Use clean_col_name_str on the values from smd_column_map before passing to row.get
         new_row_data['Company code'] = str(row.get(clean_col_name_str(smd_column_map['Company code']), '')) if smd_column_map['Company code'] else ''
         new_row_data['Region'] = str(row.get(clean_col_name_str(smd_column_map['Region']), '')) if smd_column_map['Region'] else ''
         new_row_data['Vendor number'] = str(row.get(clean_col_name_str(smd_column_map['Vendor number']), '')) if smd_column_map['Vendor number'] else ''
@@ -705,9 +721,122 @@ def map_smd_columns(df_smd_raw):
         mapped_rows.append(new_row_data)
 
     df_mapped_smd = pd.DataFrame(mapped_rows, columns=CONSOLIDATED_OUTPUT_COLUMNS)
-    print(f"Mapped {len(df_mapped_smd)} rows from SMD.")
-    print("--- SMD Data Mapping Complete ---")
+    logger.info(f"Mapped {len(df_mapped_smd)} rows from SMD.")
+    logger.info("--- SMD Data Mapping Complete ---")
     return df_mapped_smd
+
+
+# --- NEW PMD Lookup Processing Function ---
+def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
+    logger.info("\n--- Starting PMD Lookup Process ---")
+    
+    pmd_dump_df = clean_column_names(df_pmd_dump_raw.copy())
+    pmd_central_df = clean_column_names(df_pmd_central_raw.copy())
+
+    # --- Drop specified columns from PMD Dump ---
+    cols_to_drop = ['sl_no', 'duns']
+    pmd_dump_df.drop(columns=[col for col in cols_to_drop if col in pmd_dump_df.columns], inplace=True)
+    logger.info(f"Dropped columns {cols_to_drop} from PMD Dump if present.")
+
+    # --- Filter out specific countries from PMD Dump ---
+    excluded_countries = ['cn', 'id', 'tw', 'hk', 'jp', 'kr', 'my', 'ph', 'sg', 'th', 'vn']
+    if 'country' in pmd_dump_df.columns:
+        initial_dump_count = len(pmd_dump_df)
+        pmd_dump_df = pmd_dump_df[~pmd_dump_df['country'].str.lower().isin(excluded_countries)].copy()
+        logger.info(f"Filtered out {initial_dump_count - len(pmd_dump_df)} rows from PMD Dump based on excluded countries.")
+    else:
+        logger.warning("PMD Dump file is missing 'country' column. Cannot filter by country.")
+
+
+    # --- Robust column finding for 'Valid From' and 'Supplier Name' ---
+    valid_from_dump_col_raw = find_column_robust(df_pmd_dump_raw, 'Valid From')
+    supplier_name_dump_col_raw = find_column_robust(df_pmd_dump_raw, 'Supplier Name')
+    valid_from_central_col_raw = find_column_robust(df_pmd_central_raw, 'Valid From')
+    supplier_name_central_col_raw = find_column_robust(df_pmd_central_raw, 'Supplier Name')
+
+    required_pmd_cols = {
+        'PMD Dump - Valid From': valid_from_dump_col_raw,
+        'PMD Dump - Supplier Name': supplier_name_dump_col_raw,
+        'PMD Central - Valid From': valid_from_central_col_raw,
+        'PMD Central - Supplier Name': supplier_name_central_col_raw
+    }
+
+    missing_required_pmd_cols = [k for k, v in required_pmd_cols.items() if v is None]
+    if missing_required_pmd_cols:
+        logger.error(f"Missing one or more required columns for PMD Lookup: {missing_required_pmd_cols}")
+        return False, f"Missing one or more required columns for PMD Lookup: {missing_required_pmd_cols}"
+
+    # Get cleaned column names for internal use
+    valid_from_dump_col_cleaned = clean_col_name_str(valid_from_dump_col_raw)
+    supplier_name_dump_col_cleaned = clean_col_name_str(supplier_name_dump_col_raw)
+    valid_from_central_col_cleaned = clean_col_name_str(valid_from_central_col_raw)
+    supplier_name_central_col_cleaned = clean_col_name_str(supplier_name_central_col_raw)
+
+
+    # --- Prepare PMD Central for lookup ---
+    pmd_central_df['Valid From_dt'] = pd.to_datetime(
+        pmd_central_df[valid_from_central_col_cleaned], errors='coerce'
+    )
+    pmd_central_df_cleaned = pmd_central_df.dropna(
+        subset=['Valid From_dt', supplier_name_central_col_cleaned]
+    ).copy()
+    pmd_central_df_cleaned['comp_key'] = (
+        pmd_central_df_cleaned['Valid From_dt'].dt.strftime('%Y-%m-%d') +
+        pmd_central_df_cleaned[supplier_name_central_col_cleaned].astype(str)
+    )
+    central_comp_keys = set(pmd_central_df_cleaned['comp_key'])
+    logger.info(f"Prepared {len(central_comp_keys)} unique comparison keys from PMD Central file.")
+
+    # --- Prepare PMD Dump for comparison ---
+    pmd_dump_df['Valid From_dt'] = pd.to_datetime(
+        pmd_dump_df[valid_from_dump_col_cleaned], errors='coerce'
+    )
+    pmd_dump_df_cleaned = pmd_dump_df.dropna(
+        subset=['Valid From_dt', supplier_name_dump_col_cleaned]
+    ).copy()
+    pmd_dump_df_cleaned['comp_key'] = (
+        pmd_dump_df_cleaned['Valid From_dt'].dt.strftime('%Y-%m-%d') +
+        pmd_dump_df_cleaned[supplier_name_dump_col_cleaned].astype(str)
+    )
+    logger.info(f"Prepared {len(pmd_dump_df_cleaned)} rows for comparison from PMD Dump file.")
+
+    # --- Find unique rows in PMD Dump not in PMD Central ---
+    unique_dump_rows = pmd_dump_df_cleaned[
+        ~pmd_dump_df_cleaned['comp_key'].isin(central_comp_keys)
+    ].copy()
+    logger.info(f"Found {len(unique_dump_rows)} unique rows in PMD Dump not present in PMD Central.")
+
+    if unique_dump_rows.empty:
+        return False, "No unique entries found in PMD Dump file compared to PMD Central file."
+
+    # --- Select and format output columns ---
+    # We need to map the cleaned column names back to the original PMD_OUTPUT_COLUMNS for display
+    # First, create a mapping from robust-found raw names to cleaned internal names, then back to desired output names
+    
+    # Example for 'Valid From': find_column_robust found 'Valid From' (raw) -> cleaned 'valid_from' (internal)
+    # The output wants 'Valid From' (desired output name)
+    
+    # This requires looking up the _original_ column names from df_pmd_dump_raw that correspond to the desired output names
+    
+    final_output_df = pd.DataFrame()
+    for col_name in PMD_OUTPUT_COLUMNS:
+        # Try to find the original column name in the raw dump df that matches the desired output name
+        robust_found_raw_col = find_column_robust(df_pmd_dump_raw, col_name)
+        if robust_found_raw_col:
+            # Use the robustly found column to extract data
+            final_output_df[col_name] = unique_dump_rows[clean_col_name_str(robust_found_raw_col)]
+        else:
+            # If not found, add an empty column
+            final_output_df[col_name] = ''
+            logger.warning(f"Output column '{col_name}' not found in PMD Dump. Added as blank.")
+
+    # Ensure 'Valid From' is formatted correctly in the final output
+    if 'Valid From' in final_output_df.columns:
+        final_output_df['Valid From'] = pd.to_datetime(final_output_df['Valid From'], errors='coerce')
+        final_output_df['Valid From'] = final_output_df['Valid From'].dt.strftime('%Y-%m-%d %H:%M %p').fillna('')
+    
+    logger.info("PMD Lookup Process completed successfully.")
+    return True, final_output_df[PMD_OUTPUT_COLUMNS] # Ensure order of columns
 
 
 # --- Flask Routes ---
@@ -720,13 +849,13 @@ def index():
 def process_files():
     temp_dir = tempfile.mkdtemp(dir='/tmp')
 
-    # Clear all relevant session data for a fresh start
+    # Clear all relevant session data for a fresh start for this process
     session.pop('consolidated_output_path', None)
     session.pop('central_output_path', None)
-    session.pop('temp_dir', None)
+    session.pop('temp_dir_consolidated', None) # Renamed to avoid clash
     session.pop('region_map', None)
-
-    session['temp_dir'] = temp_dir
+    
+    session['temp_dir_consolidated'] = temp_dir # Store consolidated temp dir
 
     REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')
 
@@ -736,15 +865,14 @@ def process_files():
         # Mandatory files
         mandatory_file_keys = ['pisa_file', 'esm_file', 'pm7_file', 'central_file']
         # Optional files
-        optional_file_keys = ['workon_file', 'workon_rgba_file', 'smd_data_file'] # Added smd_data_file here
+        optional_file_keys = ['workon_file', 'workon_rgba_file', 'smd_data_file']
 
         # Process mandatory files first
         for key in mandatory_file_keys:
             if key not in request.files or request.files[key].filename == '':
                 flash(f'Missing mandatory file: "{key}". All PISA, ESM, PM7, and Central files are required.', 'error')
-                # Ensure temp_dir cleanup on error
                 if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-                session.pop('temp_dir', None)
+                session.pop('temp_dir_consolidated', None)
                 return redirect(url_for('index'))
             
             file = request.files[key]
@@ -753,45 +881,43 @@ def process_files():
                 file_path = os.path.join(temp_dir, filename)
                 file.save(file_path)
                 uploaded_files[key] = file_path
-                flash(f'File "{filename}" uploaded successfully.', 'info')
+                logger.info(f'File "{filename}" uploaded successfully.')
             else:
                 flash(f'Invalid file type for "{key}". Please upload an .xlsx file.', 'error')
                 if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-                session.pop('temp_dir', None)
+                session.pop('temp_dir_consolidated', None)
                 return redirect(url_for('index'))
 
         # Process optional files
         for key in optional_file_keys:
-            file = request.files.get(key) # Use .get() as it might not be present if not uploaded
-            if file and file.filename != '': # Check if file object exists and has a filename
+            file = request.files.get(key)
+            if file and file.filename != '':
                 if file.filename.lower().endswith('.xlsx'):
                     filename = secure_filename(file.filename)
                     file_path = os.path.join(temp_dir, filename)
                     file.save(file_path)
                     uploaded_files[key] = file_path
-                    flash(f'Optional file "{filename}" uploaded successfully.', 'info')
+                    logger.info(f'Optional file "{filename}" uploaded successfully.')
                 else:
                     flash(f'Invalid file type for optional file "{key}". It must be an .xlsx file, or left blank.', 'warning')
-                    # Don't abort, just warn and continue without this file
             else:
-                print(f"INFO: Optional file '{key}' not provided or empty. Skipping.")
+                logger.info(f"INFO: Optional file '{key}' not provided or empty. Skipping.")
 
         pisa_file_path = uploaded_files['pisa_file']
         esm_file_path = uploaded_files['esm_file']
         pm7_file_path = uploaded_files['pm7_file']
         initial_central_file_input_path = uploaded_files['central_file']
         
-        # Get paths for optional files, defaulting to None if not uploaded
         workon_file_path = uploaded_files.get('workon_file')
         workon_rgba_file_path = uploaded_files.get('workon_rgba_file')
-        smd_data_file_path = uploaded_files.get('smd_data_file') # Get SMD file path
+        smd_data_file_path = uploaded_files.get('smd_data_file')
 
         df_pisa_original = None
         df_esm_original = None
         df_pm7_original = None
         df_workon_original = None
         df_workon_rgba_original = None
-        df_smd_original = None # New DataFrame for SMD
+        df_smd_original = None
         df_region_mapping = None
 
         try:
@@ -799,25 +925,26 @@ def process_files():
             df_esm_original = pd.read_excel(esm_file_path)
             df_pm7_original = pd.read_excel(pm7_file_path)
             
-            if workon_file_path: # Only read if path exists
+            if workon_file_path:
                 df_workon_original = pd.read_excel(workon_file_path)
-            if workon_rgba_file_path: # Only read if path exists
+            if workon_rgba_file_path:
                 df_workon_rgba_original = pd.read_excel(workon_rgba_file_path)
-            if smd_data_file_path: # Read SMD file if path exists
+            if smd_data_file_path:
                 df_smd_original = pd.read_excel(smd_data_file_path)
 
             if os.path.exists(REGION_MAPPING_FILE_PATH):
                 df_region_mapping = pd.read_excel(REGION_MAPPING_FILE_PATH)
-                print(f"Successfully loaded region mapping file from: {REGION_MAPPING_FILE_PATH}")
+                logger.info(f"Successfully loaded region mapping file from: {REGION_MAPPING_FILE_PATH}")
             else:
                 flash(f"Error: Region mapping file not found at {REGION_MAPPING_FILE_PATH}. Region column will be empty.", 'warning')
                 df_region_mapping = pd.DataFrame(columns=['R/3 CoCo', 'Region'])
 
         except Exception as e:
             flash(f"Error loading one or more input Excel files or the region mapping file: {e}. Please ensure all files are valid .xlsx formats and the mapping file exists.", 'error')
+            logger.error(f"Error loading input files: {e}")
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
-            session.pop('temp_dir', None)
+            session.pop('temp_dir_consolidated', None)
             return redirect(url_for('index'))
 
 
@@ -833,11 +960,10 @@ def process_files():
         elif not df_consolidated_pisa_esm_pm7.empty:
              flash('Data consolidation from PISA, ESM, PM7 completed successfully!', 'success')
         
-        # Intermediate path for consolidated file (PISA, ESM, PM7 only), not directly downloadable by user but useful for debugging
+        # Intermediate path for consolidated file (PISA, ESM, PM7 only)
         consolidated_output_filename = f'ConsolidatedData_PISA_ESM_PM7_{today_str}.xlsx'
         consolidated_output_file_path = os.path.join(temp_dir, consolidated_output_filename)
         df_consolidated_pisa_esm_pm7.to_excel(consolidated_output_file_path, index=False)
-        # session['consolidated_output_path'] = consolidated_output_file_path # Keep this in case you want to offer download later
 
         # --- Step 2: Update existing central file records based on PISA/ESM/PM7 consolidation ---
         success, df_central_updated_existing = process_central_file_step2_update_existing(
@@ -846,7 +972,7 @@ def process_files():
         if not success:
             flash(f'Central File Processing (Step 2) Error: {df_central_updated_existing}', 'error')
             if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-            session.pop('temp_dir', None)
+            session.pop('temp_dir_consolidated', None)
             return redirect(url_for('index'))
 
         # --- Step 3: Final Merge (Add new PISA/ESM/PM7 barcodes, mark 'Needs Review', apply Region Mapping) ---
@@ -856,18 +982,16 @@ def process_files():
         if not success:
             flash(f'Central File Processing (Step 3) Error: {df_final_central_pisa_esm_pm7}', 'error')
             if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-            session.pop('temp_dir', None)
+            session.pop('temp_dir_consolidated', None)
             return redirect(url_for('index'))
         flash('Central file updated and merged with PISA, ESM, PM7 data successfully!', 'success')
 
-        # Get the region map generated in step 3 for use with Workon RGBA (and potentially P71)
         current_region_map = session.get('region_map', {})
 
-        # df_current_consolidated will hold the incrementally built DataFrame
-        df_current_consolidated = df_final_central_pisa_esm_pm7.copy() # Start with the central + PISA/ESM/PM7 data
+        df_current_consolidated = df_final_central_pisa_esm_pm7.copy()
 
-        # --- Phase 2: Workon P71 Integration (Append) ---
-        if df_workon_original is not None and not df_workon_original.empty: # Check if file was uploaded and not empty
+        # --- Workon P71 Integration (Append) ---
+        if df_workon_original is not None and not df_workon_original.empty:
             df_mapped_workon_p71 = map_workon_columns(df_workon_original)
             if df_mapped_workon_p71.empty:
                 flash('Workon P71 file was empty or had mapping issues. No Workon P71 data added.', 'warning')
@@ -875,11 +999,11 @@ def process_files():
                 df_current_consolidated = pd.concat([df_current_consolidated, df_mapped_workon_p71[CONSOLIDATED_OUTPUT_COLUMNS]], ignore_index=True)
                 flash('Workon P71 data successfully mapped and appended.', 'success')
         else:
-            print("INFO: Workon P71 file not provided or empty. Skipping processing.")
+            logger.info("INFO: Workon P71 file not provided or empty. Skipping processing.")
 
 
-        # --- Phase 3: Workon RGBA Integration (Append) ---
-        if df_workon_rgba_original is not None and not df_workon_rgba_original.empty: # Check if file was uploaded and not empty
+        # --- Workon RGBA Integration (Append) ---
+        if df_workon_rgba_original is not None and not df_workon_rgba_original.empty:
             df_mapped_workon_rgba = map_workon_rgba_columns(df_workon_rgba_original, current_region_map)
             if df_mapped_workon_rgba.empty:
                 flash('Workon RGBA file was empty, had filtering issues, or mapping issues. No Workon RGBA data added.', 'warning')
@@ -887,9 +1011,9 @@ def process_files():
                 df_current_consolidated = pd.concat([df_current_consolidated, df_mapped_workon_rgba[CONSOLIDATED_OUTPUT_COLUMNS]], ignore_index=True)
                 flash('Workon RGBA data successfully filtered, mapped, and appended!', 'success')
         else:
-            print("INFO: Workon RGBA file not provided or empty. Skipping processing.")
+            logger.info("INFO: Workon RGBA file not provided or empty. Skipping processing.")
 
-        # --- Phase 4: SMD Data Integration (Append) --- # NEW PHASE
+        # --- SMD Data Integration (Append) ---
         if df_smd_original is not None and not df_smd_original.empty:
             df_mapped_smd = map_smd_columns(df_smd_original)
             if df_mapped_smd.empty:
@@ -898,7 +1022,7 @@ def process_files():
                 df_current_consolidated = pd.concat([df_current_consolidated, df_mapped_smd[CONSOLIDATED_OUTPUT_COLUMNS]], ignore_index=True)
                 flash('SMD Data successfully mapped and appended.', 'success')
         else:
-            print("INFO: SMD Data file not provided or empty. Skipping processing.")
+            logger.info("INFO: SMD Data file not provided or empty. Skipping processing.")
 
 
         # Assign the final consolidated DataFrame for the rest of the processing
@@ -906,7 +1030,7 @@ def process_files():
 
 
         # --- FINAL AGING CALCULATION ---
-        print("\n--- Calculating Aging for blank entries ---")
+        logger.info("\n--- Calculating Aging for blank entries ---")
         # Convert date columns to datetime objects for calculation, coercing errors to NaT
         df_ultimate_final_central['Received Date_dt'] = pd.to_datetime(df_ultimate_final_central['Received Date'], format='%m/%d/%Y', errors='coerce')
         df_ultimate_final_central['Allocation Date_dt'] = pd.to_datetime(df_ultimate_final_central['Allocation Date'], format='%m/%d/%Y', errors='coerce')
@@ -923,7 +1047,7 @@ def process_files():
 
         # Clean up temporary date columns
         df_ultimate_final_central = df_ultimate_final_central.drop(columns=['Received Date_dt', 'Allocation Date_dt'])
-        print(f"Calculated Aging for {aging_mask.sum()} entries.")
+        logger.info(f"Calculated Aging for {aging_mask.sum()} entries.")
         # --- END FINAL AGING CALCULATION ---
 
 
@@ -935,8 +1059,9 @@ def process_files():
             df_ultimate_final_central.to_excel(final_central_output_file_path, index=False)
         except Exception as e:
             flash(f"Error saving final central file: {e}", 'error')
+            logger.error(f"Error saving final central file: {e}")
             if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-            session.pop('temp_dir', None)
+            session.pop('temp_dir_consolidated', None)
             return redirect(url_for('index'))
 
         session['central_output_path'] = final_central_output_file_path
@@ -947,27 +1072,94 @@ def process_files():
 
     except Exception as e:
         flash(f'An unhandled error occurred during processing: {e}', 'error')
-        import traceback
-        traceback.print_exc()
+        logger.exception("Unhandled error during consolidated file processing:")
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
-        session.pop('temp_dir', None)
+        session.pop('temp_dir_consolidated', None)
         return redirect(url_for('index'))
     finally:
-        pass
+        pass # The consolidated temp_dir is kept until download/cleanup to allow access to the generated file
 
+
+# --- NEW ROUTE FOR PMD LOOKUP ---
+@app.route('/process_pmd_lookup', methods=['POST'])
+def process_pmd_lookup():
+    temp_dir = tempfile.mkdtemp(dir='/tmp')
+
+    # Clear session data specific to PMD lookup for a fresh start
+    session.pop('pmd_output_path', None)
+    session.pop('temp_dir_pmd', None) # New session key for PMD temp dir
+
+    session['temp_dir_pmd'] = temp_dir # Store PMD temp dir
+
+    try:
+        pmd_dump_file = request.files.get('pmd_dump_file')
+        pmd_central_file = request.files.get('pmd_central_file')
+
+        if not pmd_dump_file or pmd_dump_file.filename == '':
+            flash('Missing "PMD Dump file".', 'error')
+            return redirect(url_for('index'))
+        if not pmd_central_file or pmd_central_file.filename == '':
+            flash('Missing "PMD Central file".', 'error')
+            return redirect(url_for('index'))
+
+        if not pmd_dump_file.filename.lower().endswith('.xlsx') or \
+           not pmd_central_file.filename.lower().endswith('.xlsx'):
+            flash('Both PMD files must be .xlsx format.', 'error')
+            return redirect(url_for('index'))
+
+        dump_path = os.path.join(temp_dir, secure_filename(pmd_dump_file.filename))
+        central_path = os.path.join(temp_dir, secure_filename(pmd_central_file.filename))
+
+        pmd_dump_file.save(dump_path)
+        pmd_central_file.save(central_path)
+        logger.info(f"PMD Dump file saved to {dump_path}")
+        logger.info(f"PMD Central file saved to {central_path}")
+
+        df_pmd_dump_raw = pd.read_excel(dump_path)
+        df_pmd_central_raw = pd.read_excel(central_path)
+
+        success, result_df = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
+
+        if not success:
+            flash(f'PMD Lookup failed: {result_df}', 'error')
+            return redirect(url_for('index'))
+
+        today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
+        pmd_output_filename = f'PMD_Lookup_ResultFile_{today_str}.xlsx'
+        pmd_output_file_path = os.path.join(temp_dir, pmd_output_filename)
+        
+        try:
+            result_df.to_excel(pmd_output_file_path, index=False)
+        except Exception as e:
+            flash(f"Error saving PMD Lookup result file: {e}", 'error')
+            logger.error(f"Error saving PMD Lookup result file: {e}")
+            return redirect(url_for('index'))
+
+        session['pmd_output_path'] = pmd_output_file_path
+        flash('PMD Lookup process completed successfully!', 'success')
+        return render_template('index.html',
+                               pmd_download_link=url_for('download_pmd_file', filename=os.path.basename(pmd_output_file_path)))
+
+    except Exception as e:
+        flash(f'An unhandled error occurred during PMD Lookup: {e}', 'error')
+        logger.exception("Unhandled error during PMD Lookup processing:")
+        return redirect(url_for('index'))
+    finally:
+        # The PMD temp_dir is kept until download/cleanup to allow access to the generated file
+        # It will be cleared by download_pmd_file or cleanup_session
+        pass
 
 @app.route('/download/<filename>', methods=['GET'])
 def download_file(filename):
+    # This route handles the consolidated central file download
     file_path_in_temp = None
-    temp_dir = session.get('temp_dir')
+    temp_dir = session.get('temp_dir_consolidated') # Use consolidated temp_dir
 
-    print(f"DEBUG: Download requested for filename: {filename}")
-    print(f"DEBUG: Session temp_dir: {temp_dir}")
-    print(f"DEBUG: Central output path in session: {session.get('central_output_path')}")
+    logger.info(f"Download requested for consolidated file: {filename}")
 
     if not temp_dir:
-        print("DEBUG: temp_dir not found in session.")
+        logger.warning("Consolidated temp_dir not found in session.")
         flash('File not found for download or session expired. Please re-run the process.', 'error')
         return redirect(url_for('index'))
 
@@ -975,12 +1167,12 @@ def download_file(filename):
 
     if central_session_path and os.path.basename(central_session_path) == filename:
         file_path_in_temp = os.path.join(temp_dir, filename)
-        print(f"DEBUG: Matched final central file. Reconstructed path: {file_path_in_temp}")
+        logger.info(f"Matched consolidated central file. Reconstructed path: {file_path_in_temp}")
     else:
-        print(f"DEBUG: Filename '{filename}' did not match the final central output file in session.")
+        logger.warning(f"Filename '{filename}' did not match the final central output file in session.")
 
     if file_path_in_temp and os.path.exists(file_path_in_temp):
-        print(f"DEBUG: File '{file_path_in_temp}' exists. Attempting to send.")
+        logger.info(f"File '{file_path_in_temp}' exists. Attempting to send.")
         try:
             response = send_file(
                 file_path_in_temp,
@@ -990,28 +1182,83 @@ def download_file(filename):
             )
             return response
         except Exception as e:
-            print(f"ERROR: Exception while sending file '{file_path_in_temp}': {e}")
+            logger.error(f"Exception while sending consolidated file '{file_path_in_temp}': {e}")
             flash(f'Error providing download: {e}. Please try again.', 'error')
             return redirect(url_for('index'))
     else:
-        print(f"DEBUG: File '{filename}' not found for download or session data missing/expired. Full path attempted: {file_path_in_temp}")
+        logger.warning(f"File '{filename}' not found for download or session data missing/expired. Full path attempted: {file_path_in_temp}")
         flash('File not found for download or session expired. Please re-run the process.', 'error')
+        return redirect(url_for('index'))
+
+# --- NEW DOWNLOAD ROUTE FOR PMD LOOKUP RESULT ---
+@app.route('/download_pmd_file/<filename>', methods=['GET'])
+def download_pmd_file(filename):
+    file_path_in_temp = None
+    temp_dir = session.get('temp_dir_pmd') # Use PMD specific temp_dir
+
+    logger.info(f"Download requested for PMD lookup file: {filename}")
+
+    if not temp_dir:
+        logger.warning("PMD temp_dir not found in session.")
+        flash('PMD result file not found for download or session expired. Please re-run the PMD Lookup process.', 'error')
+        return redirect(url_for('index'))
+
+    pmd_session_path = session.get('pmd_output_path')
+
+    if pmd_session_path and os.path.basename(pmd_session_path) == filename:
+        file_path_in_temp = os.path.join(temp_dir, filename)
+        logger.info(f"Matched PMD lookup result file. Reconstructed path: {file_path_in_temp}")
+    else:
+        logger.warning(f"Filename '{filename}' did not match the PMD lookup output file in session.")
+
+    if file_path_in_temp and os.path.exists(file_path_in_temp):
+        logger.info(f"File '{file_path_in_temp}' exists. Attempting to send.")
+        try:
+            response = send_file(
+                file_path_in_temp,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name=filename
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Exception while sending PMD lookup file '{file_path_in_temp}': {e}")
+            flash(f'Error providing PMD download: {e}. Please try again.', 'error')
+            return redirect(url_for('index'))
+    else:
+        logger.warning(f"File '{filename}' not found for download or session data missing/expired. Full path attempted: {file_path_in_temp}")
+        flash('PMD result file not found for download or session expired. Please re-run the PMD Lookup process.', 'error')
         return redirect(url_for('index'))
 
 @app.route('/cleanup_session', methods=['GET'])
 def cleanup_session():
-    temp_dir = session.get('temp_dir')
-    if temp_dir and os.path.exists(temp_dir):
+    # Cleanup for consolidated process
+    temp_dir_consolidated = session.get('temp_dir_consolidated')
+    if temp_dir_consolidated and os.path.exists(temp_dir_consolidated):
         try:
-            shutil.rmtree(temp_dir)
-            print(f"DEBUG: Cleaned up temporary directory: {temp_dir}")
-            flash('Temporary files cleaned up.', 'info')
+            shutil.rmtree(temp_dir_consolidated)
+            logger.info(f"Cleaned up consolidated temporary directory: {temp_dir_consolidated}")
+            flash('Temporary consolidated files cleaned up.', 'info')
         except OSError as e:
-            print(f"ERROR: Error removing temporary directory {temp_dir}: {e}")
-            flash(f'Error cleaning up temporary files: {e}', 'error')
-    session.pop('temp_dir', None)
+            logger.error(f"Error removing consolidated temporary directory {temp_dir_consolidated}: {e}")
+            flash(f'Error cleaning up consolidated temporary files: {e}', 'error')
+    session.pop('temp_dir_consolidated', None)
     session.pop('central_output_path', None)
     session.pop('region_map', None)
+
+    # Cleanup for PMD lookup process
+    temp_dir_pmd = session.get('temp_dir_pmd')
+    if temp_dir_pmd and os.path.exists(temp_dir_pmd):
+        try:
+            shutil.rmtree(temp_dir_pmd)
+            logger.info(f"Cleaned up PMD temporary directory: {temp_dir_pmd}")
+            flash('Temporary PMD lookup files cleaned up.', 'info')
+        except OSError as e:
+            logger.error(f"Error removing PMD temporary directory {temp_dir_pmd}: {e}")
+            flash(f'Error cleaning up PMD temporary files: {e}', 'error')
+    session.pop('temp_dir_pmd', None)
+    session.pop('pmd_output_path', None)
+    
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
