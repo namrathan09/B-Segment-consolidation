@@ -261,6 +261,16 @@
                 <label for="smd_file">Upload SMD Excel File (.xlsx):</label>
                 <input type="file" name="smd_file" id="smd_file" accept=".xlsx" required>
             </div>
+            <!-- Existing Workon P71 file input (now optional) -->
+            <div class="form-group">
+                <label for="workon_file">Upload Workon P71 Excel File (.xlsx) (Optional):</label>
+                <input type="file" name="workon_file" id="workon_file" accept=".xlsx">
+            </div>
+            <!-- Existing Workon RGBA file input (now optional) -->
+            <div class="form-group">
+                <label for="workon_rgba_file">Upload Workon RGBA Excel File (.xlsx) (Optional):</label>
+                <input type="file" name="workon_rgba_file" id="workon_rgba_file" accept=".xlsx">
+            </div>
             <div class="form-group">
                 <label for="central_file">Upload Central Excel File (.xlsx):</label>
                 <input type="file" name="central_file" id="central_file" accept=".xlsx" required>
@@ -324,7 +334,33 @@
                         <li><strong>Requested by</strong> (with a space after Requested)</li>
                     </ul>
                 </li>
-                <li><strong>Processing & Upload:</strong> Upload the ESM, PISA, PM7, SMD, and Central files. Then, click on the <strong>"Process Files"</strong> button. The new updated tracker file will be automatically downloaded and will be ready for allocation.</li>
+                <li><strong>Workon P71 (Optional) Mandatory Columns:</strong> If uploaded, the Workon P71 file should contain:
+                    <ul>
+                        <li><strong>Key</strong> (mapped to Barcode)</li>
+                        <li><strong>Action</strong> (mapped to Category)</li>
+                        <li><strong>Company Code</strong></li>
+                        <li><strong>Country</strong> (mapped to Region)</li>
+                        <li><strong>Vendor Number</strong></li>
+                        <li><strong>Name</strong> (mapped to Vendor Name)</li>
+                        <li><strong>Status</strong></li>
+                        <li><strong>Updated</strong> (mapped to Received Date)</li>
+                        <li><strong>Applicant</strong> (mapped to Requester)</li>
+                        <li><strong>Summary</strong> (mapped to Remarks)</li>
+                        <li>Hardcoded values: Processor='Jayapal', Channel='Workon', Allocation Date=Today's Date, Today=Today's Date.</li>
+                    </ul>
+                </li>
+                <li><strong>Workon RGBA (Optional) Mandatory Columns:</strong> If uploaded, the Workon RGBA file should contain:
+                    <ul>
+                        <li><strong>Key</strong> (mapped to Barcode)</li>
+                        <li><strong>Applicant</strong> (mapped to Requester)</li>
+                        <li><strong>Company Code</strong></li>
+                        <li><strong>Updated</strong> (mapped to Received Date)</li>
+                        <li><strong>Summary</strong> (mapped to Remarks)</li>
+                        <li><strong>Current Assignee</strong> (used for filtering - if 'Divya Sridhar', record is excluded)</li>
+                        <li>Hardcoded values: Processor='Divya', Channel='Workon', Allocation Date=Today's Date, Today=Today's Date.</li>
+                    </ul>
+                </li>
+                <li><strong>Processing & Upload:</strong> Upload the ESM, PISA, PM7, SMD, and Central files (Workon files are optional). Then, click on the <strong>"Process Files"</strong> button. The new updated tracker file will be automatically downloaded and will be ready for allocation.</li>
                 <li><strong>Post-Processing Actions:</strong>
                     <ul>
                         <li><strong>Rename & Upload:</strong> Replace the newly downloaded file by renaming it to <code>New B_Segment(DD_MM_YYYY)</code> with <strong>today's date</strong> in the Teams channel.</li>
