@@ -237,7 +237,8 @@ def consolidate_smd_data(df_smd_original):
                 'Requester': row.get('requested_by'),
                 'Today': today_date,
                 'Channel': 'SMD', # Set Channel to SMD
-                'Status': None, 'Completion Date': None, # Default None/empty for now
+                # All other fields are intentionally left as None/defaults as per your last clarification
+                'Status': None, 'Completion Date': None,
                 'Re-Open Date': None, 'Allocation Date': None,
                 'Clarification Date': None, 'Aging': None, 'Remarks': None,
                 'Processor': None, 'Category': None
@@ -331,7 +332,8 @@ def process_central_file_step2_update_existing(master_consolidated_df, central_f
     return True, df_central_cleaned
 
 
-def process_central_file_step3_final_merge_and_needs_review(master_consolidated_df, updated_existing_central_df, df_pisa_original, df_esm_original, df_pm7_original, df_smd_original, region_mapping_df):
+def process_central_file_step3_final_merge_and_needs_review(master_consolidated_df, updated_existing_central_df, df_pisa_original, df_esm_original, df_pm7_original, region_mapping_df):
+    # REMOVED df_smd_original from parameters as it's not needed for lookups anymore
     """
     Step 3: Handles barcodes present only in master_consolidated_df (adds them as new)
             and barcodes present only in central (marks them as 'Needs Review' if not 'Completed').
@@ -342,7 +344,8 @@ def process_central_file_step3_final_merge_and_needs_review(master_consolidated_
     df_pisa_lookup = clean_column_names(df_pisa_original.copy())
     df_esm_lookup = clean_column_names(df_esm_original.copy())
     df_pm7_lookup = clean_column_names(df_pm7_original.copy())
-    df_smd_lookup = clean_column_names(df_smd_original.copy()) # Added SMD lookup
+    # REMOVED df_smd_lookup and df_smd_indexed as they are not needed for lookups
+    # df_smd_lookup = clean_column_names(df_smd_original.copy())
 
     df_pisa_indexed = pd.DataFrame()
     if 'barcode' in df_pisa_lookup.columns:
@@ -368,13 +371,14 @@ def process_central_file_step3_final_merge_and_needs_review(master_consolidated_
     else:
         print("Warning: 'barcode' column not found in cleaned PM7 lookup. Cannot perform PM7 lookups.")
 
-    df_smd_indexed = pd.DataFrame() # Added SMD lookup
-    if 'barcode' in df_smd_lookup.columns:
-        df_smd_lookup['barcode'] = df_smd_lookup['barcode'].astype(str)
-        df_smd_indexed = df_smd_lookup.set_index('barcode')
-        print(f"SMD lookup indexed by 'barcode'.")
-    else:
-        print("Warning: 'barcode' column not found in cleaned SMD lookup. Cannot perform SMD lookups.")
+    # REMOVED df_smd_indexed creation
+    # df_smd_indexed = pd.DataFrame()
+    # if 'barcode' in df_smd_lookup.columns:
+    #     df_smd_lookup['barcode'] = df_smd_lookup['barcode'].astype(str)
+    #     df_smd_indexed = df_smd_lookup.set_index('barcode')
+    #     print(f"SMD lookup indexed by 'barcode'.")
+    # else:
+    #     print("Warning: 'barcode' column not found in cleaned SMD lookup. Cannot perform SMD lookups.")
 
     if 'Barcode' not in master_consolidated_df.columns:
         return False, "Error: 'Barcode' column not found in the master consolidated file. Cannot proceed with final central file processing (Step 3)."
@@ -395,6 +399,9 @@ def process_central_file_step3_final_merge_and_needs_review(master_consolidated_
         barcode = row_consolidated['Barcode']
         channel = row_consolidated['Channel']
 
+        # Initial values come directly from df_new_records_from_consolidated (which is part of master_consolidated_df)
+        # We only override these if a *specific* lookup is required, which now only applies to PISA, ESM, PM7
+        # For SMD, Workon P71, Workon RGBA, the values are already as they should be from their respective consolidation functions
         vendor_name = row_consolidated.get('Vendor Name')
         vendor_number = row_consolidated.get('Vendor number')
         company_code = row_consolidated.get('Company code')
@@ -403,6 +410,8 @@ def process_central_file_step3_final_merge_and_needs_review(master_consolidated_
         category = row_consolidated.get('Category')
         region = row_consolidated.get('Region')
         requester = row_consolidated.get('Requester')
+        remarks = row_consolidated.get('Remarks')
+        status = row_consolidated.get('Status') # Taking status from consolidated as a base
 
         # --- PISA Lookup ---
         if channel == 'PISA' and not df_pisa_indexed.empty and barcode in df_pisa_indexed.index:
@@ -442,33 +451,30 @@ def process_central_file_step3_final_merge_and_needs_review(master_consolidated_
             if 'received_date' in pm7_row.index and pd.notna(pm7_row['received_date']):
                 received_date = pm7_row['received_date']
 
-        # --- SMD Lookup --- ADDED
-        elif channel == 'SMD' and not df_smd_indexed.empty and barcode in df_smd_indexed.index:
-            smd_row = df_smd_indexed.loc[barcode]
-            if 'ekorg' in smd_row.index and pd.notna(smd_row['ekorg']):
-                company_code = smd_row['ekorg']
-            if 'material_field' in smd_row.index and pd.notna(smd_row['material_field']):
-                region = smd_row['material_field']
-            if 'pmd_sno' in smd_row.index and pd.notna(smd_row['pmd_sno']):
-                vendor_number = smd_row['pmd_sno']
-            if 'supplier_name' in smd_row.index and pd.notna(smd_row['supplier_name']):
-                vendor_name = smd_row['supplier_name']
-            if 'request_date' in smd_row.index and pd.notna(smd_row['request_date']):
-                received_date = smd_row['request_date']
-            if 'requested_by' in smd_row.index and pd.notna(smd_row['requested_by']):
-                requester = smd_row['requested_by']
+        # --- Workon and SMD data should already have their mapped values from df_master_consolidated ---
+        # No explicit elif for 'SMD' or 'Workon' here, as their fields are already correctly set in row_consolidated
+        # and not being looked up from an *original* raw file again.
 
-        new_central_row_data = row_consolidated.to_dict()
-        new_central_row_data['Vendor Name'] = vendor_name if vendor_name is not None else ''
-        new_central_row_data['Vendor number'] = vendor_number if vendor_number is not None else ''
-        new_central_row_data['Company code'] = company_code if company_code is not None else ''
-        new_central_row_data['Received Date'] = received_date
-        new_central_row_data['Status'] = 'New'
-        new_central_row_data['Allocation Date'] = datetime.now().strftime("%m/%d/%Y")
-        new_central_row_data['Processor'] = processor if processor is not None else ''
-        new_central_row_data['Category'] = category if category is not None else ''
-        new_central_row_data['Region'] = region if region is not None else ''
-        new_central_row_data['Requester'] = requester if requester is not None else ''
+        new_central_row_data = {
+            'Barcode': barcode,
+            'Processor': processor if processor is not None else '',
+            'Channel': channel,
+            'Category': category if category is not None else '',
+            'Company code': company_code if company_code is not None else '',
+            'Region': region if region is not None else '',
+            'Vendor number': vendor_number if vendor_number is not None else '',
+            'Vendor Name': vendor_name if vendor_name is not None else '',
+            'Status': 'New', # Status for newly added records is always 'New'
+            'Received Date': received_date,
+            'Re-Open Date': row_consolidated.get('Re-Open Date') if row_consolidated.get('Re-Open Date') is not None else '', # Take from consolidated
+            'Allocation Date': datetime.now().strftime("%m/%d/%Y"), # Always today for new records
+            'Clarification Date': row_consolidated.get('Clarification Date') if row_consolidated.get('Clarification Date') is not None else '', # Take from consolidated
+            'Completion Date': row_consolidated.get('Completion Date') if row_consolidated.get('Completion Date') is not None else '', # Take from consolidated
+            'Requester': requester if requester is not None else '',
+            'Remarks': remarks if remarks is not None else '',
+            'Aging': row_consolidated.get('Aging') if row_consolidated.get('Aging') is not None else '', # Take from consolidated
+            'Today': row_consolidated.get('Today') # Take from consolidated
+        }
 
         all_new_central_rows_data.append(new_central_row_data)
 
@@ -970,7 +976,7 @@ def process_files():
         
         success, final_central_df = process_central_file_step3_final_merge_and_needs_review(
             df_master_consolidated, df_central_updated_existing, 
-            df_pisa_original, df_esm_original, df_pm7_original, df_smd_original, # Pass df_smd_original here
+            df_pisa_original, df_esm_original, df_pm7_original, # REMOVED df_smd_original from here
             df_region_mapping
         )
         if not success:
