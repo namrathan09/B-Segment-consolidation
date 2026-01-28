@@ -36,6 +36,12 @@ color: #2c3e50; /* Dark blue */
 text-align: center;
 margin-bottom: 30px;
 }
+h2 { /* Added styling for h2 as well */
+color: #2c3e50;
+text-align: center;
+margin-top: 40px; /* Space above new section titles */
+margin-bottom: 20px;
+}
 .form-group {
 margin-bottom: 15px;
 text-align: left; /* Align labels and inputs to the left */
@@ -67,6 +73,7 @@ cursor: pointer;
 font-size: 1.1em;
 width: 100%;
 transition: background-color 0.3s ease;
+margin-top: 10px; /* Added some margin for buttons */
 }
 button:hover {
 background-color: #003d80; /* Slightly darker blue on hover */
@@ -230,7 +237,6 @@ text-decoration: underline;
 <body>
 <div class="container">
 <!-- Bosch Image.png added here -->
-<!-- Make sure the filename is correct based on what you have in static/images/ -->
 <img src="{{ url_for('static', filename='images/Bosch.png') }}" alt="Bosch Logo" class="logo">
 <h1>B-SEGMENT ALLOCATION</h1>
 
@@ -248,6 +254,7 @@ text-decoration: underline;
 {% endif %}
 {% endwith %}
 
+<h2>Consolidated Data Processing</h2>
 <form action="/process" method="post" enctype="multipart/form-data">
 <div class="form-group">
 <label for="pisa_file">Upload PISA Excel File (.xlsx):</label>
@@ -270,23 +277,46 @@ text-decoration: underline;
 <input type="file" name="workon_rgba_file" id="workon_rgba_file" accept=".xlsx">
 </div>
 <div class="form-group">
-<label for="smd_data_file">Upload SMD Data Excel File (.xlsx) (Optional):</label> {# NEW SMD INPUT #}
+<label for="smd_data_file">Upload SMD Data Excel File (.xlsx) (Optional):</label>
 <input type="file" name="smd_data_file" id="smd_data_file" accept=".xlsx">
 </div>
 <div class="form-group">
 <label for="central_file">Upload Central Excel File (.xlsx):</label>
 <input type="file" name="central_file" id="central_file" accept=".xlsx" required>
 </div>
-<button type="submit">Process Files</button>
+<button type="submit">Process Consolidated Files</button>
 </form>
 
 {% if central_download_link %}
 <div class="download-links">
-<h2>Processing Complete!</h2>
-<p>Your processed file is ready:</p>
+<h2>Consolidated Processing Complete!</h2>
+<p>Your processed central file is ready:</p>
 <a href="{{ central_download_link }}" download>Download Updated Central File</a>
 </div>
 {% endif %}
+
+{# NEW SECTION FOR PMD LOOKUP #}
+<h2>PMD Lookup Tool</h2>
+<form action="/process_pmd_lookup" method="post" enctype="multipart/form-data">
+<div class="form-group">
+<label for="pmd_dump_file">Upload PMD Dump File (.xlsx):</label>
+<input type="file" name="pmd_dump_file" id="pmd_dump_file" accept=".xlsx" required>
+</div>
+<div class="form-group">
+<label for="pmd_central_file">Upload PMD Central File (.xlsx):</label>
+<input type="file" name="pmd_central_file" id="pmd_central_file" accept=".xlsx" required>
+</div>
+<button type="submit">Process PMD Lookup</button>
+</form>
+
+{% if pmd_download_link %}
+<div class="download-links">
+<h2>PMD Lookup Complete!</h2>
+<p>Your PMD lookup result file is ready:</p>
+<a href="{{ pmd_download_link }}" download>Download PMD Lookup Result File</a>
+</div>
+{% endif %}
+
 </div>
 
 <!-- The Modal (Rules Popup) -->
@@ -344,8 +374,27 @@ text-decoration: underline;
 <li>All other columns will be left blank.</li>
 </ul>
 </li>
-<li><strong>Processing & Upload:</strong> Upload the ESM, PISA, PM7, and Central files. Optionally upload Workon P71, Workon RGBA, and SMD Data files. Then, click on the <strong>"Process Files"</strong> button. The new updated tracker file will be automatically downloaded and will be ready for allocation.</li>
-<li><strong>Post-Processing Actions:</strong>
+<li><strong>PMD Lookup Process:</strong> This is a separate tool to identify unique PMD entries.
+<ul>
+<li><strong>Input Files:</strong> Requires a 'PMD Dump File' and a 'PMD Central File'. Both must be .xlsx.</li>
+<li><strong>Comparison Logic:</strong> Identifies rows in the 'PMD Dump File' that are not present in the 'PMD Central File'. Uniqueness is determined by the combination of 'Valid From' date (formatted as YYYY-MM-DD) and 'Supplier Name'.</li>
+<li><strong>Pre-processing:</strong>
+    <ul>
+        <li>Columns 'Sl. No.' and 'DUNS' are dropped from the PMD Dump.</li>
+        <li>Rows with 'Country' in `CN, ID, TW, HK, JP, KR, MY, PH, SG, TH, VN` are excluded.</li>
+        <li>Rows with blank 'Valid From' or 'Supplier Name' are excluded from the comparison.</li>
+    </ul>
+</li>
+<li><strong>Output:</strong> Generates 'PMD_Lookup_ResultFile.xlsx' containing the unique rows from the PMD Dump, with specific columns and 'Valid From' formatted as YYYY-MM-DD HH:MM AM/PM.</li>
+</ul>
+</li>
+<li><strong>Processing & Upload:</strong>
+    <ul>
+        <li>For **Consolidated Data**: Upload the ESM, PISA, PM7, and Central files. Optionally upload Workon P71, Workon RGBA, and SMD Data files. Then, click on the <strong>"Process Consolidated Files"</strong> button. The new updated tracker file will be automatically downloaded and will be ready for allocation.</li>
+        <li>For **PMD Lookup**: Upload the 'PMD Dump File' and 'PMD Central File'. Then, click on the <strong>"Process PMD Lookup"</strong> button. The 'PMD_Lookup_ResultFile.xlsx' will be automatically downloaded.</li>
+    </ul>
+</li>
+<li><strong>Post-Processing Actions (Consolidated File):</strong>
 <ul>
 <li><strong>Rename & Upload:</strong> Replace the newly downloaded file by renaming it to <code>New B_Segment(DD_MM_YYYY)</code> with <strong>today's date</strong> in the Teams channel.</li>
 <li><strong>Archive Old File:</strong> Move the <code>New B_Segment(DD_MM_YYYY)</code> with <strong>yesterday's date</strong> into the <strong><code>Old Data (Do not Modify)</code> folder</strong>.</li>
