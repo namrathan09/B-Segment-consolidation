@@ -75,6 +75,16 @@ def find_column_robust(df, target_column_keywords):
             return original_col
     return None
 
+# Helper to clean a single string for .get() after find_column_robust
+def clean_col_name_str(col_name):
+    if col_name is None:
+        return None
+    col = str(col_name).strip().lower()
+    col = re.sub(r'\s+', '_', col)
+    col = re.sub(r'[^a-z0-9_]', '', col)
+    col = col.strip('_')
+    return col
+
 def consolidate_data_process(df_pisa, df_esm, df_pm7):
     """
     Reads PISA, ESM, and PM7 Excel files (now passed as DFs), filters PISA, consolidates data.
@@ -532,17 +542,6 @@ def map_workon_columns(df_workon_raw):
     return df_mapped_workon
 
 
-# Helper to clean a single string for .get() after find_column_robust
-def clean_col_name_str(col_name):
-    if col_name is None:
-        return None
-    col = str(col_name).strip().lower()
-    col = re.sub(r'\s+', '_', col)
-    col = re.sub(r'[^a-z0-9_]', '', col)
-    col = col.strip('_')
-    return col
-
-
 def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
     """
     Maps columns from the raw Workon RGBA DataFrame to the CONSOLIDATED_OUTPUT_COLUMNS format.
@@ -652,6 +651,64 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
     print("--- Workon RGBA Data Mapping Complete ---")
     return df_mapped_workon_rgba
 
+def map_smd_columns(df_smd_raw):
+    """
+    Maps columns from the raw SMD DataFrame to the CONSOLIDATED_OUTPUT_COLUMNS format.
+    Handles robust column finding and hardcoded values.
+    """
+    print("\n--- Starting SMD Data Mapping ---")
+    if df_smd_raw.empty:
+        print("SMD DataFrame is empty. Skipping mapping.")
+        return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
+
+    df_smd = clean_column_names(df_smd_raw.copy())
+    today_date = datetime.now()
+    today_date_formatted = today_date.strftime("%m/%d/%Y")
+
+    mapped_rows = []
+
+    smd_column_map = {
+        'Company code': find_column_robust(df_smd_raw, 'Ekorg'),
+        'Region': find_column_robust(df_smd_raw, 'Material Field'),
+        'Vendor number': find_column_robust(df_smd_raw, 'PMD-SNO'),
+        'Vendor Name': find_column_robust(df_smd_raw, 'supplier name'),
+        'Received Date': find_column_robust(df_smd_raw, 'Request Date'),
+        'Requester': find_column_robust(df_smd_raw, 'Requested by'),
+        # Barcode is not mapped, so it will remain blank unless defined here
+        # Processor, Category, Status, Re-Open Date, Clarification Date, Completion Date, Remarks, Aging
+        # will be blank by default initialization
+    }
+
+    # Validate essential columns for mapping (if any are critical, e.g., 'Ekorg')
+    # For SMD, we'll assume no columns are strictly mandatory for the process to continue,
+    # as the requirement is "rule free" and "just map". If Ekorg is missing, that column will be blank.
+
+    for index, row in df_smd.iterrows():
+        new_row_data = {col: '' for col in CONSOLIDATED_OUTPUT_COLUMNS} # Initialize all with blank
+
+        # Hardcoded values
+        new_row_data['Channel'] = 'SMD'
+        new_row_data['Allocation Date'] = today_date_formatted
+        new_row_data['Today'] = today_date_formatted
+
+        # Mapped values
+        new_row_data['Company code'] = str(row.get(clean_col_name_str(smd_column_map['Company code']), '')) if smd_column_map['Company code'] else ''
+        new_row_data['Region'] = str(row.get(clean_col_name_str(smd_column_map['Region']), '')) if smd_column_map['Region'] else ''
+        new_row_data['Vendor number'] = str(row.get(clean_col_name_str(smd_column_map['Vendor number']), '')) if smd_column_map['Vendor number'] else ''
+        new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(smd_column_map['Vendor Name']), '')) if smd_column_map['Vendor Name'] else ''
+        new_row_data['Requester'] = str(row.get(clean_col_name_str(smd_column_map['Requester']), '')) if smd_column_map['Requester'] else ''
+
+        # Date columns - format immediately after retrieval
+        received_date_val = row.get(clean_col_name_str(smd_column_map['Received Date'])) if smd_column_map['Received Date'] else None
+        new_row_data['Received Date'] = format_date_to_mdyyyy(pd.Series([received_date_val])).iloc[0] if received_date_val is not None else ''
+
+        mapped_rows.append(new_row_data)
+
+    df_mapped_smd = pd.DataFrame(mapped_rows, columns=CONSOLIDATED_OUTPUT_COLUMNS)
+    print(f"Mapped {len(df_mapped_smd)} rows from SMD.")
+    print("--- SMD Data Mapping Complete ---")
+    return df_mapped_smd
+
 
 # --- Flask Routes ---
 
@@ -679,7 +736,7 @@ def process_files():
         # Mandatory files
         mandatory_file_keys = ['pisa_file', 'esm_file', 'pm7_file', 'central_file']
         # Optional files
-        optional_file_keys = ['workon_file', 'workon_rgba_file']
+        optional_file_keys = ['workon_file', 'workon_rgba_file', 'smd_data_file'] # Added smd_data_file here
 
         # Process mandatory files first
         for key in mandatory_file_keys:
@@ -727,12 +784,14 @@ def process_files():
         # Get paths for optional files, defaulting to None if not uploaded
         workon_file_path = uploaded_files.get('workon_file')
         workon_rgba_file_path = uploaded_files.get('workon_rgba_file')
+        smd_data_file_path = uploaded_files.get('smd_data_file') # Get SMD file path
 
         df_pisa_original = None
         df_esm_original = None
         df_pm7_original = None
         df_workon_original = None
         df_workon_rgba_original = None
+        df_smd_original = None # New DataFrame for SMD
         df_region_mapping = None
 
         try:
@@ -744,6 +803,8 @@ def process_files():
                 df_workon_original = pd.read_excel(workon_file_path)
             if workon_rgba_file_path: # Only read if path exists
                 df_workon_rgba_original = pd.read_excel(workon_rgba_file_path)
+            if smd_data_file_path: # Read SMD file if path exists
+                df_smd_original = pd.read_excel(smd_data_file_path)
 
             if os.path.exists(REGION_MAPPING_FILE_PATH):
                 df_region_mapping = pd.read_excel(REGION_MAPPING_FILE_PATH)
@@ -827,6 +888,18 @@ def process_files():
                 flash('Workon RGBA data successfully filtered, mapped, and appended!', 'success')
         else:
             print("INFO: Workon RGBA file not provided or empty. Skipping processing.")
+
+        # --- Phase 4: SMD Data Integration (Append) --- # NEW PHASE
+        if df_smd_original is not None and not df_smd_original.empty:
+            df_mapped_smd = map_smd_columns(df_smd_original)
+            if df_mapped_smd.empty:
+                flash('SMD Data file was empty or had mapping issues. No SMD data added.', 'warning')
+            else:
+                df_current_consolidated = pd.concat([df_current_consolidated, df_mapped_smd[CONSOLIDATED_OUTPUT_COLUMNS]], ignore_index=True)
+                flash('SMD Data successfully mapped and appended.', 'success')
+        else:
+            print("INFO: SMD Data file not provided or empty. Skipping processing.")
+
 
         # Assign the final consolidated DataFrame for the rest of the processing
         df_ultimate_final_central = df_current_consolidated
