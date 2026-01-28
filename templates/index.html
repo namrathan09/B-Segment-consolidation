@@ -6,6 +6,7 @@
     <title>Allocation Application</title>
 
     <style>
+        /* Basic CSS for better readability */
         body {
             font-family: Arial, sans-serif;
             background-color: #f6f2f2;
@@ -39,10 +40,97 @@
             margin-bottom: 30px;
         }
 
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 1em;
+            background-color: #fff;
+        }
+
+        button {
+            background-color: #0056b3;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1.1em;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #003d80;
+        }
+
+        .flash-messages {
+            list-style-type: none;
+            padding: 0;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .flash-messages li {
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        .flash-messages li.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .flash-messages li.success {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .flash-messages li.info {
+            background-color: #e2f0fb;
+            color: #1a4f8a;
+            border: 1px solid #bce1fb;
+        }
+
+        .download-links {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .rules-link {
+            display: block;
+            text-align: right;
+            margin-bottom: 15px;
+        }
+
+        .rules-link a {
+            color: #0056b3;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
         .navigation-links {
             margin-top: 20px;
             margin-bottom: 30px;
-            width: 100%;
             text-align: center;
         }
 
@@ -55,19 +143,13 @@
             text-decoration: none;
             margin: 5px 10px;
             font-weight: bold;
-            transition: background-color 0.3s ease;
         }
 
-        .navigation-links a:hover {
-            background-color: #218838;
-        }
-
-        /* ---------------- MODAL FIX HERE ---------------- */
+        /* Modal */
         .modal {
             display: none;
-            pointer-events: none; /* ✅ CRITICAL FIX */
             position: fixed;
-            z-index: 1000;
+            z-index: 1;
             left: 0;
             top: 0;
             width: 100%;
@@ -78,7 +160,7 @@
         }
 
         .modal-content {
-            background-color: #ffffff;
+            background-color: #fff;
             padding: 20px;
             border-radius: 8px;
             width: 80%;
@@ -90,75 +172,109 @@
             font-size: 28px;
             cursor: pointer;
         }
-
-        .rules-link {
-            text-align: right;
-            margin-bottom: 15px;
-        }
-
-        .rules-link a {
-            color: #0056b3;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        .rules-link a:hover {
-            text-decoration: underline;
-        }
     </style>
 </head>
 
 <body>
+    <div class="container">
 
-<div class="container">
+        <img src="{{ url_for('static', filename='images/Bosch.png') }}"
+             alt="Bosch Logo"
+             class="logo">
 
-    <img src="{{ url_for('static', filename='images/Bosch.png') }}" alt="Bosch Logo" class="logo">
+        <h1>B-SEGMENT ALLOCATION</h1>
 
-    <h1>B-SEGMENT ALLOCATION</h1>
+        <div class="rules-link">
+            <a href="#" id="openRulesModal">View Rules & Instructions</a>
+        </div>
 
-    <div class="rules-link">
-        <a href="#" id="openRulesModal">View Rules & Instructions</a>
+        <div class="navigation-links">
+            <a href="{{ url_for('pmd_lookup.pmd_lookup_index') }}">
+                PMD Lookup Automation
+            </a>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flash-messages">
+                    {% for category, message in messages %}
+                        <li class="{{ category }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('process_files') }}"
+              method="post"
+              enctype="multipart/form-data">
+
+            <div class="form-group">
+                <label for="pisa_file">Upload PISA Excel File (.xlsx):</label>
+                <input type="file" name="pisa_file" id="pisa_file" required>
+            </div>
+
+            <div class="form-group">
+                <label for="esm_file">Upload ESM Excel File (.xlsx):</label>
+                <input type="file" name="esm_file" id="esm_file" required>
+            </div>
+
+            <div class="form-group">
+                <label for="pm7_file">Upload PM7 Excel File (.xlsx):</label>
+                <input type="file" name="pm7_file" id="pm7_file" required>
+            </div>
+
+            <div class="form-group">
+                <label for="smd_file">Upload SMD Excel File (.xlsx):</label>
+                <input type="file" name="smd_file" id="smd_file" required>
+            </div>
+
+            <div class="form-group">
+                <label for="workon_file">Upload Workon P71 Excel File (Optional):</label>
+                <input type="file" name="workon_file" id="workon_file">
+            </div>
+
+            <div class="form-group">
+                <label for="workon_rgba_file">Upload Workon RGBA Excel File (Optional):</label>
+                <input type="file" name="workon_rgba_file" id="workon_rgba_file">
+            </div>
+
+            <div class="form-group">
+                <label for="central_file">Upload Central Excel File (.xlsx):</label>
+                <input type="file" name="central_file" id="central_file" required>
+            </div>
+
+            <button type="submit">Process Files</button>
+        </form>
+
     </div>
 
-    <div class="navigation-links">
-        <a href="{{ url_for('pmd_lookup.pmd_lookup_index') }}">
-            PMD Lookup Automation
-        </a>
+    <!-- Modal -->
+    <div id="rulesModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Allocation Application Rules & Guidelines</h2>
+            <!-- rules list unchanged -->
+        </div>
     </div>
 
-</div>
+    <script>
+        var modal = document.getElementById("rulesModal");
+        var btn = document.getElementById("openRulesModal");
+        var span = document.getElementsByClassName("close-button")[0];
 
-<!-- MODAL -->
-<div id="rulesModal" class="modal">
-    <div class="modal-content">
-        <span class="close-button">&times;</span>
-        <h2>Allocation Application Rules & Guidelines</h2>
-        <p>Rules content unchanged...</p>
-    </div>
-</div>
+        btn.onclick = function () {
+            modal.style.display = "flex";
+        };
 
-<script>
-    var modal = document.getElementById("rulesModal");
-    var btn = document.getElementById("openRulesModal");
-    var span = document.getElementsByClassName("close-button")[0];
-
-    btn.onclick = function () {
-        modal.style.display = "flex";
-        modal.style.pointerEvents = "auto"; // ✅ enable clicks
-    }
-
-    span.onclick = function () {
-        modal.style.display = "none";
-        modal.style.pointerEvents = "none"; // ✅ disable clicks
-    }
-
-    window.onclick = function (event) {
-        if (event.target === modal) {
+        span.onclick = function () {
             modal.style.display = "none";
-            modal.style.pointerEvents = "none";
-        }
-    }
-</script>
+        };
 
+        window.onclick = function (event) {
+            if (event.target === modal) {
+                modal.style.display = "none";
+            }
+        };
+    </script>
 </body>
 </html>
