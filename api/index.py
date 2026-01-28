@@ -882,7 +882,7 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
         # --- CORRECTED: Received Date logic - directly map from Valid From, and format with format_date_to_pmddump ---
         valid_from_val_for_sheet2 = row.get(clean_col_name_str(valid_from_col_raw_for_sheet2)) if valid_from_col_raw_for_sheet2 else None
         
-        # Apply the specific PMD dump date format
+        # Apply the specific PMD dump date format for "Received Date" in Sheet 2
         new_row_data['Received Date'] = format_date_to_pmddump(pd.Series([valid_from_val_for_sheet2])).iloc[0] if valid_from_val_for_sheet2 is not None else ''
         # --- END CORRECTION ---
 
@@ -1182,12 +1182,15 @@ def process_pmd_lookup():
         df_pmd_central_raw = pd.read_excel(central_path)
 
         # Call the updated function that returns three items: success status, df_sheet1, df_sheet2
-        success, df_sheet1, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
+        success, result_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
 
         if not success:
-            flash(f'PMD Lookup failed: {df_sheet1}', 'error') # df_sheet1 contains error message on failure
-            logger.error(f"PMD Lookup process failed: {df_sheet1}")
+            flash(f'PMD Lookup failed: {result_or_error_msg}', 'error') # df_sheet1 contains error message on failure
+            logger.error(f"PMD Lookup process failed: {result_or_error_msg}")
             return redirect(url_for('index'))
+
+        # If successful, result_or_error_msg is actually df_sheet1
+        df_sheet1 = result_or_error_msg
 
         today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         pmd_output_filename = f'PMD_Lookup_ResultFile_{today_str}.xlsx'
