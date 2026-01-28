@@ -262,12 +262,16 @@ text-decoration: underline;
 <input type="file" name="pm7_file" id="pm7_file" accept=".xlsx" required>
 </div>
 <div class="form-group">
-<label for="workon_file">Upload Workon P71 Excel File (.xlsx):</label> {# Added (Optional) to label #}
-<input type="file" name="workon_file" id="workon_file" accept=".xlsx"> {# REMOVED required attribute #}
+<label for="workon_file">Upload Workon P71 Excel File (.xlsx) (Optional):</label>
+<input type="file" name="workon_file" id="workon_file" accept=".xlsx">
 </div>
 <div class="form-group">
-<label for="workon_rgba_file">Upload Workon RGBA Excel File (.xlsx):</label> {# Added (Optional) to label #}
-<input type="file" name="workon_rgba_file" id="workon_rgba_file" accept=".xlsx"> {# REMOVED required attribute #}
+<label for="workon_rgba_file">Upload Workon RGBA Excel File (.xlsx) (Optional):</label>
+<input type="file" name="workon_rgba_file" id="workon_rgba_file" accept=".xlsx">
+</div>
+<div class="form-group">
+<label for="smd_data_file">Upload SMD Data Excel File (.xlsx) (Optional):</label> {# NEW SMD INPUT #}
+<input type="file" name="smd_data_file" id="smd_data_file" accept=".xlsx">
 </div>
 <div class="form-group">
 <label for="central_file">Upload Central Excel File (.xlsx):</label>
@@ -320,17 +324,27 @@ text-decoration: underline;
 <li><strong>Received date</strong> (with a space after received, mapped from 'Creation date')</li>
 </ul>
 </li>
-<li><strong>Workon P71 Mandatory Columns & Mapping:</strong> If provided, the Workon P71 file will be appended to the finalized Central File. The columns are same as in the downloaded dump.  
-                    </ul>
+<li><strong>Workon P71 Mandatory Columns & Mapping:</strong> If provided, the Workon P71 file will be appended to the finalized Central File. The columns are same as in the downloaded dump.
 </li>
-{# NEW SECTION FOR WORKON RGBA #}
 <li><strong>Workon RGBA Mandatory Columns, Filter & Mapping :</strong> If provided, the Workon RGBA file will be filtered and appended to the finalized Central File.
 <p><strong>Filter Condition:</strong> Only records where <code>Current Assignee</code> is "VMD GS OSP-NA (GS/OMD-APAC)" will be processed.</p>
 <p>The columns are same as in the downloaded dump.</p>
+</li>
+<li><strong>SMD Data Mapping:</strong> If provided, the SMD Data file will be mapped and appended to the finalized Central File. This channel is **rule-free** and directly maps its data.
 <ul>
+<li><code>Company code</code> will be mapped from 'Ekorg'.</li>
+<li><code>Region</code> will be mapped from 'Material Field'.</li>
+<li><code>Vendor number</code> will be mapped from 'PMD-SNO'.</li>
+<li><code>Vendor Name</code> will be mapped from 'supplier name'.</li>
+<li><code>Received Date</code> will be mapped from 'Request Date'.</li>
+<li><code>Requester</code> will be mapped from 'Requested by'.</li>
+<li><code>Channel</code> will be set to 'SMD'.</li>
+<li><code>Allocation Date</code> will be set to today's date.</li>
+<li><code>Today</code> will be set to today's date.</li>
+<li>All other columns will be left blank.</li>
 </ul>
 </li>
-<li><strong>Processing & Upload:</strong> Upload the ESM, PISA, PM7, and Central files. Optionally upload Workon P71 and Workon RGBA files. Then, click on the <strong>"Process Files"</strong> button. The new updated tracker file will be automatically downloaded and will be ready for allocation.</li>
+<li><strong>Processing & Upload:</strong> Upload the ESM, PISA, PM7, and Central files. Optionally upload Workon P71, Workon RGBA, and SMD Data files. Then, click on the <strong>"Process Files"</strong> button. The new updated tracker file will be automatically downloaded and will be ready for allocation.</li>
 <li><strong>Post-Processing Actions:</strong>
 <ul>
 <li><strong>Rename & Upload:</strong> Replace the newly downloaded file by renaming it to <code>New B_Segment(DD_MM_YYYY)</code> with <strong>today's date</strong> in the Teams channel.</li>
