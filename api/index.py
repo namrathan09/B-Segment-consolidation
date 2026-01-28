@@ -384,7 +384,7 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
             if 'vendor_number' in esm_row.index and pd.notna(esm_row['vendor_number']) and not new_central_row_data.get('Vendor number'):
                 new_central_row_data['Vendor number'] = esm_row['vendor_number']
             if 'received_date' in esm_row.index and pd.notna(esm_row['received_date']) and not new_central_row_data.get('Received Date'):
-                new_central_row_data['Received Date'] = pisa_row['received_date'] # Changed from pisa_row to esm_row
+                new_central_row_data['Received Date'] = esm_row['received_date'] # Corrected from pisa_row to esm_row
 
         elif channel == 'PM7' and not df_pm7_indexed.empty and barcode in df_pm7_indexed.index:
             pm7_row = df_pm7_indexed.loc[barcode]
@@ -747,10 +747,11 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
     logger.info("\n--- Starting PMD Lookup Process ---")
     
     # Store the original raw column names from the dump to use for Sheet1
-    original_dump_cols = df_pmd_dump_raw.columns.tolist()
+    # Create a copy to ensure df_pmd_dump_raw is not modified
+    df_pmd_dump_raw_copy = df_pmd_dump_raw.copy() 
 
-    pmd_dump_df_cleaned_cols = clean_column_names(df_pmd_dump_raw.copy())
-    pmd_central_df_cleaned_cols = clean_column_names(df_pmd_central_raw.copy())
+    pmd_dump_df_cleaned_cols = clean_column_names(df_pmd_dump_raw_copy.copy()) # clean on a copy
+    pmd_central_df_cleaned_cols = clean_column_names(df_pmd_central_raw.copy()) # clean on a copy
 
     # --- Drop specified columns from PMD Dump (using cleaned names) ---
     cols_to_drop = ['sl_no', 'duns']
@@ -768,6 +769,7 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
 
 
     # --- Robust column finding for 'Valid From' and 'Supplier Name' for comparison keys ---
+    # Need to find these columns in the *original* raw dataframes for find_column_robust
     valid_from_dump_col_raw = find_column_robust(df_pmd_dump_raw, 'Valid From')
     supplier_name_dump_col_raw = find_column_robust(df_pmd_dump_raw, 'Supplier Name')
     valid_from_central_col_raw = find_column_robust(df_pmd_central_raw, 'Valid From')
@@ -783,7 +785,7 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
     missing_required_pmd_cols = [k for k, v in required_pmd_cols.items() if v is None]
     if missing_required_pmd_cols:
         logger.error(f"Missing one or more required columns for PMD Lookup comparison: {missing_required_pmd_cols}")
-        return False, f"Missing one or more required columns for PMD Lookup comparison: {missing_required_pmd_cols}", None # Return 3 items
+        return False, f"Missing one or more required columns for PMD Lookup comparison: {missing_required_pmd_cols}", None # Return 3 items for consistency
 
     # Get cleaned column names for internal use (from the *original* found names)
     valid_from_dump_col_cleaned = clean_col_name_str(valid_from_dump_col_raw)
@@ -832,7 +834,8 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
     # --- Generate DataFrame for Sheet 1 (Original PMD format) ---
     df_sheet1 = pd.DataFrame()
     for col_name in PMD_OUTPUT_COLUMNS_SHEET1:
-        robust_found_raw_col = find_column_robust(df_pmd_dump_raw, col_name) # Search in original raw dump
+        # Re-using df_pmd_dump_raw for find_column_robust to get original column names for Sheet 1
+        robust_found_raw_col = find_column_robust(df_pmd_dump_raw, col_name) 
         if robust_found_raw_col:
             df_sheet1[col_name] = unique_dump_rows_for_sheet_generation[clean_col_name_str(robust_found_raw_col)]
         else:
@@ -850,14 +853,13 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
     df_sheet2_rows = []
     today_date_formatted = datetime.now().strftime("%m/%d/%Y")
 
-    # Robustly find raw column names needed for Sheet2 mapping
+    # Robustly find raw column names needed for Sheet2 mapping (use df_pmd_dump_raw)
     type_col_raw = find_column_robust(df_pmd_dump_raw, 'Type')
     bukr_col_raw = find_column_robust(df_pmd_dump_raw, 'Bukr.')
     country_col_raw = find_column_robust(df_pmd_dump_raw, 'Country')
     ebsno_col_raw = find_column_robust(df_pmd_dump_raw, 'EBSNO')
     supplier_name_col_raw = find_column_robust(df_pmd_dump_raw, 'Supplier Name')
-    pur_release_date_col_raw = find_column_robust(df_pmd_dump_raw, 'Pur. release date')
-    valid_from_col_raw_for_sheet2 = find_column_robust(df_pmd_dump_raw, 'Valid From')
+    valid_from_col_raw_for_sheet2 = find_column_robust(df_pmd_dump_raw, 'Valid From') # Direct map from Valid From
     requested_by_col_raw = find_column_robust(df_pmd_dump_raw, 'Requested By')
 
     for index, row in unique_dump_rows_for_sheet_generation.iterrows():
@@ -876,18 +878,11 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
         new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(supplier_name_col_raw), ''))
         new_row_data['Requester'] = str(row.get(clean_col_name_str(requested_by_col_raw), ''))
 
-        # Received Date logic
-        pur_release_date_val = row.get(clean_col_name_str(pur_release_date_col_raw)) if pur_release_date_col_raw else None
+        # --- CORRECTED: Received Date logic - directly map from Valid From ---
         valid_from_val_for_sheet2 = row.get(clean_col_name_str(valid_from_col_raw_for_sheet2)) if valid_from_col_raw_for_sheet2 else None
         
-        received_date_source = None
-        if pd.notna(pur_release_date_val):
-            received_date_source = pur_release_date_val
-        elif pd.notna(valid_from_val_for_sheet2):
-            received_date_source = valid_from_val_for_sheet2
-        
-        new_row_data['Received Date'] = format_date_to_mdyyyy(pd.Series([received_date_source])).iloc[0] if received_date_source is not None else ''
-
+        new_row_data['Received Date'] = format_date_to_mdyyyy(pd.Series([valid_from_val_for_sheet2])).iloc[0] if valid_from_val_for_sheet2 is not None else ''
+        # --- END CORRECTION ---
 
         df_sheet2_rows.append(new_row_data)
     
@@ -1184,14 +1179,16 @@ def process_pmd_lookup():
         df_pmd_dump_raw = pd.read_excel(dump_path)
         df_pmd_central_raw = pd.read_excel(central_path)
 
-        # Call the updated function that returns two DataFrames
-        success, df_sheet1, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
+        # Call the updated function that returns three items: success status, df_sheet1, df_sheet2
+        success, result_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
 
         if not success:
-            # If not successful, df_sheet1 will contain the error message
-            flash(f'PMD Lookup failed: {df_sheet1}', 'error')
-            logger.error(f"PMD Lookup process failed: {df_sheet1}")
+            flash(f'PMD Lookup failed: {result_or_error_msg}', 'error')
+            logger.error(f"PMD Lookup process failed: {result_or_error_msg}")
             return redirect(url_for('index'))
+
+        # If successful, result_or_error_msg is actually df_sheet1
+        df_sheet1 = result_or_error_msg
 
         today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         pmd_output_filename = f'PMD_Lookup_ResultFile_{today_str}.xlsx'
