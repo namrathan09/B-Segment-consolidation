@@ -909,7 +909,10 @@ def process_files():
             print("INFO: Workon RGBA file not provided or empty. Skipping processing.")
 
         if not all_consolidated_dfs:
-            return False, "No data collected from any source for consolidation."
+            flash("No data collected from any source for consolidation.", 'error')
+            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+            session.pop('temp_dir', None)
+            return redirect(url_for('index'))
 
         df_master_consolidated = pd.concat(all_consolidated_dfs, ignore_index=True)
         print(f"Total rows in Master Consolidated DataFrame: {len(df_master_consolidated)}")
@@ -919,6 +922,8 @@ def process_files():
         df_master_consolidated = calculate_aging(df_master_consolidated)
 
         # 2. Format dates and handle NaNs for display/saving
+        # NOTE: Date formatting to MM/DD/YYYY strings happens *here* for the consolidated Excel file.
+        # It also happens again for the final central Excel file below.
         date_cols_to_process = ['Received Date', 'Re-Open Date', 'Allocation Date', 'Completion Date', 'Clarification Date', 'Today']
         for col in df_master_consolidated.columns:
             if col in date_cols_to_process:
@@ -985,8 +990,8 @@ def process_files():
                     final_central_df[col] = final_central_df[col].astype(str).replace('nan', '')
         
         # Recalculate Aging one last time on the final data before saving
-        final_central_df = calculate_aging(final_central_df)
-        
+        final_central_df = calculate_aging(final_central_df) # Recalculate aging for the absolute final output
+
         try:
             final_central_df.to_excel(final_central_output_file_path, index=False)
             print(f"Final central file saved to: {final_central_output_file_path}")
