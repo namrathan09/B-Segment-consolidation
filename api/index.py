@@ -746,12 +746,13 @@ def map_smd_columns(df_smd_raw):
 def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
     logger.info("\n--- Starting PMD Lookup Process ---")
     
-    # Store the original raw column names from the dump to use for Sheet1
-    # Create a copy to ensure df_pmd_dump_raw is not modified
-    df_pmd_dump_raw_copy = df_pmd_dump_raw.copy() 
+    # Create copies to ensure original raw dataframes are not modified
+    df_pmd_dump_working = df_pmd_dump_raw.copy() 
+    df_pmd_central_working = df_pmd_central_raw.copy()
 
-    pmd_dump_df_cleaned_cols = clean_column_names(df_pmd_dump_raw_copy.copy()) # clean on a copy
-    pmd_central_df_cleaned_cols = clean_column_names(df_pmd_central_raw.copy()) # clean on a copy
+    # Clean column names for internal processing
+    pmd_dump_df_cleaned_cols = clean_column_names(df_pmd_dump_working.copy()) 
+    pmd_central_df_cleaned_cols = clean_column_names(df_pmd_central_working.copy())
 
     # --- Drop specified columns from PMD Dump (using cleaned names) ---
     cols_to_drop = ['sl_no', 'duns']
@@ -878,10 +879,11 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
         new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(supplier_name_col_raw), ''))
         new_row_data['Requester'] = str(row.get(clean_col_name_str(requested_by_col_raw), ''))
 
-        # --- CORRECTED: Received Date logic - directly map from Valid From ---
+        # --- CORRECTED: Received Date logic - directly map from Valid From, and format with format_date_to_pmddump ---
         valid_from_val_for_sheet2 = row.get(clean_col_name_str(valid_from_col_raw_for_sheet2)) if valid_from_col_raw_for_sheet2 else None
         
-        new_row_data['Received Date'] = format_date_to_mdyyyy(pd.Series([valid_from_val_for_sheet2])).iloc[0] if valid_from_val_for_sheet2 is not None else ''
+        # Apply the specific PMD dump date format
+        new_row_data['Received Date'] = format_date_to_pmddump(pd.Series([valid_from_val_for_sheet2])).iloc[0] if valid_from_val_for_sheet2 is not None else ''
         # --- END CORRECTION ---
 
         df_sheet2_rows.append(new_row_data)
@@ -1180,15 +1182,12 @@ def process_pmd_lookup():
         df_pmd_central_raw = pd.read_excel(central_path)
 
         # Call the updated function that returns three items: success status, df_sheet1, df_sheet2
-        success, result_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
+        success, df_sheet1, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
 
         if not success:
-            flash(f'PMD Lookup failed: {result_or_error_msg}', 'error')
-            logger.error(f"PMD Lookup process failed: {result_or_error_msg}")
+            flash(f'PMD Lookup failed: {df_sheet1}', 'error') # df_sheet1 contains error message on failure
+            logger.error(f"PMD Lookup process failed: {df_sheet1}")
             return redirect(url_for('index'))
-
-        # If successful, result_or_error_msg is actually df_sheet1
-        df_sheet1 = result_or_error_msg
 
         today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         pmd_output_filename = f'PMD_Lookup_ResultFile_{today_str}.xlsx'
