@@ -1,3 +1,5 @@
+# your_project_root/api/index.py
+
 import os
 import pandas as pd
 from datetime import datetime
@@ -8,17 +10,32 @@ import re
 from flask import Flask, request, render_template, redirect, url_for, send_file, flash, session
 from werkzeug.utils import secure_filename
 
+# Import the PMD Lookup blueprint from its new location
+from api.pmd_lookup_app import pmd_lookup_bp
+
 warnings.filterwarnings('ignore')
 
-# --- Vercel Specific Path Configuration ---
+# --- Path Configuration for Vercel/Nested Structure ---
+# BASE_DIR is the directory containing *this* index.py file, which is 'api/'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-template_dir = os.path.join(BASE_DIR, '..', 'templates')
-static_dir = os.path.join(BASE_DIR, '..', 'static')
+
+# The project root is one level up from BASE_DIR
+project_root = os.path.join(BASE_DIR, '..')
+
+# template_dir and static_dir are relative to the project_root
+template_dir = os.path.join(project_root, 'templates')
+static_dir = os.path.join(project_root, 'static')
 
 # Initialize Flask app
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key_for_local_dev_only')
+# Register the PMD Lookup blueprint
+# All routes in pmd_lookup_bp will be prefixed with /pmd-lookup
+app.register_blueprint(pmd_lookup_bp, url_prefix='/pmd-lookup')
+
+# Set a secret key for session management.
+# Use an environment variable for production, or a default for local dev.
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a_highly_secret_key_for_allocation_app_CHANGE_ME_IN_PROD')
 
 # --- Global Variables ---
 CONSOLIDATED_OUTPUT_COLUMNS = [
@@ -222,10 +239,6 @@ def consolidate_smd_data(df_smd_original):
     today_date = datetime.now()
 
     # --- SMD Processing ---
-    # Removed the 'if barcode not in df_smd.columns' check,
-    # now we just try to get the barcode, defaulting to '' if not found.
-    # df_smd['barcode'] = df_smd['barcode'].astype(str) # This line is moved into the loop with .get()
-    
     for index, row in df_smd.iterrows():
         barcode_val = row.get('barcode', '') # Use .get() with a default empty string if 'barcode' column is missing
         new_row = {
@@ -334,7 +347,6 @@ def process_central_file_step2_update_existing(master_consolidated_df, central_f
 
 
 def process_central_file_step3_final_merge_and_needs_review(master_consolidated_df, updated_existing_central_df, df_pisa_original, df_esm_original, df_pm7_original, region_mapping_df):
-    # REMOVED df_smd_original from parameters as it's not needed for lookups anymore
     """
     Step 3: Handles barcodes present only in master_consolidated_df (adds them as new)
             and barcodes present only in central (marks them as 'Needs Review' if not 'Completed').
@@ -585,7 +597,7 @@ def map_workon_columns(df_workon_raw):
 
     # Do not clean_column_names here. find_column_robust needs original names,
     # and then we'll use clean_col_name_str for row.get()
-    
+
     mapped_rows = []
     today_date = datetime.now()
     today_date_formatted = today_date.strftime("%m/%d/%Y")
@@ -657,7 +669,7 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
 
     # Find original column name for filtering
     current_assignee_col_raw_name = find_column_robust(df_workon_rgba_raw, 'Current Assignee')
-    
+
     # Process the DataFrame: clean names first for easier internal use
     df_workon_rgba_cleaned = clean_column_names(df_workon_rgba_raw.copy())
 
@@ -713,7 +725,7 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
         new_row_data['Company code'] = str(row.get(clean_col_name_str(workon_rgba_column_map['Company code']), ''))
 
         # Region will be mapped later based on Company Code
-        new_row_data['Region'] = '' 
+        new_row_data['Region'] = ''
 
         new_row_data['Vendor number'] = str(row.get(clean_col_name_str(workon_rgba_column_map['Vendor number']), '')) # Will be ''
         new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(workon_rgba_column_map['Vendor Name']), '')) # Will be ''
@@ -762,12 +774,12 @@ def process_files():
 
     session['temp_dir'] = temp_dir
 
-    # Region mapping file is in the project root, so we go up one level from BASE_DIR ('api/')
-    REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')
+    # Region mapping file is in the project root, so we need to go up one level from BASE_DIR
+    REGION_MAPPING_FILE_PATH = os.path.join(project_root, 'company_code_region_mapping.xlsx')
 
     try:
         uploaded_files = {}
-        
+
         # Mandatory files (now includes SMD)
         mandatory_file_keys = ['pisa_file', 'esm_file', 'pm7_file', 'smd_file', 'central_file']
         # Optional files (Workon P71 and Workon RGBA)
@@ -780,7 +792,7 @@ def process_files():
                 if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
                 session.pop('temp_dir', None)
                 return redirect(url_for('index'))
-            
+
             file = request.files[key]
             if file and file.filename.lower().endswith('.xlsx'):
                 filename = secure_filename(file.filename)
@@ -815,7 +827,7 @@ def process_files():
         pm7_file_path = uploaded_files['pm7_file']
         smd_file_path = uploaded_files['smd_file'] # Added SMD file path
         initial_central_file_input_path = uploaded_files['central_file']
-        
+
         # Get paths for optional files, defaulting to None if not uploaded
         workon_file_path = uploaded_files.get('workon_file')
         workon_rgba_file_path = uploaded_files.get('workon_rgba_file')
@@ -865,7 +877,7 @@ def process_files():
         df_consolidated_pep = consolidate_pisa_esm_pm7_data(df_pisa_original, df_esm_original, df_pm7_original)
         if not df_consolidated_pep.empty:
             all_consolidated_dfs.append(df_consolidated_pep)
-        
+
         # SMD
         df_consolidated_smd = consolidate_smd_data(df_smd_original)
         if not df_consolidated_smd.empty:
@@ -881,7 +893,7 @@ def process_files():
                 flash('Workon P71 file had mapping issues. No Workon P71 data added.', 'warning')
         else:
             print("INFO: Workon P71 file not provided or empty. Skipping processing.")
-        
+
         # Workon RGBA (Optional)
         # Pass region_map if it was loaded from the mapping file (needed for RGBA's internal region mapping logic)
         current_region_map_for_rgba = {}
@@ -893,7 +905,7 @@ def process_files():
                     coco_key = str(row['r3_coco']).strip().upper()
                     if coco_key:
                         current_region_map_for_rgba[coco_key[:4]] = str(row['region']).strip()
-        
+
         if not df_workon_rgba_original.empty:
             df_mapped_workon_rgba = map_workon_rgba_columns(df_workon_rgba_original, current_region_map_for_rgba)
             if not df_mapped_workon_rgba.empty:
@@ -929,7 +941,7 @@ def process_files():
                     df_master_consolidated[col] = df_master_consolidated[col].fillna('')
                 elif col in ['Barcode', 'Company code', 'Vendor number', 'Aging']:
                     df_master_consolidated[col] = df_master_consolidated[col].astype(str).replace('nan', '')
-        
+
         # Ensure final consolidated output columns match definition
         for col in CONSOLIDATED_OUTPUT_COLUMNS:
             if col not in df_master_consolidated.columns:
@@ -963,10 +975,10 @@ def process_files():
         # --- Step 3: Final Merge (Add new barcodes, mark 'Needs Review', and apply Region Mapping) ---
         final_central_output_filename = f'CentralFile_FinalOutput_{today_str}.xlsx'
         final_central_output_file_path = os.path.join(temp_dir, final_central_output_filename)
-        
+
         success, final_central_df = process_central_file_step3_final_merge_and_needs_review(
-            df_master_consolidated, df_central_updated_existing, 
-            df_pisa_original, df_esm_original, df_pm7_original, # REMOVED df_smd_original from here
+            df_master_consolidated, df_central_updated_existing,
+            df_pisa_original, df_esm_original, df_pm7_original,
             df_region_mapping
         )
         if not success:
@@ -974,7 +986,7 @@ def process_files():
             if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
             session.pop('temp_dir', None)
             return redirect(url_for('index'))
-        
+
         # Apply final date formatting and cleanup on the truly final central file before saving
         for col in final_central_df.columns:
             if col in date_cols_to_process:
@@ -984,7 +996,7 @@ def process_files():
                     final_central_df[col] = final_central_df[col].fillna('')
                 elif col in ['Barcode', 'Company code', 'Vendor number', 'Aging']:
                     final_central_df[col] = final_central_df[col].astype(str).replace('nan', '')
-        
+
         # Recalculate Aging one last time on the final data before saving
         final_central_df = calculate_aging(final_central_df) # Recalculate aging for the absolute final output
 
@@ -1077,5 +1089,8 @@ def cleanup_session():
     session.pop('region_map', None)
     return redirect(url_for('index'))
 
+
 if __name__ == '__main__':
+    # This block is for local development only.
+    # On Vercel, the 'vercel.json' configuration will handle how your app is run.
     app.run(debug=True)
