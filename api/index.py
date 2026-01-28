@@ -222,29 +222,30 @@ def consolidate_smd_data(df_smd_original):
     today_date = datetime.now()
 
     # --- SMD Processing ---
-    if 'barcode' not in df_smd.columns: # Assuming 'barcode' is the unique identifier in SMD
-        print("Error: 'barcode' column not found in SMD file (after cleaning). Skipping SMD processing.")
-    else:
-        df_smd['barcode'] = df_smd['barcode'].astype(str)
-        for index, row in df_smd.iterrows():
-            new_row = {
-                'Barcode': row['barcode'],
-                'Company code': row.get('ekorg'),
-                'Region': row.get('material_field'),
-                'Vendor number': row.get('pmd_sno'),
-                'Vendor Name': row.get('supplier_name'),
-                'Received Date': row.get('request_date'),
-                'Requester': row.get('requested_by'),
-                'Today': today_date,
-                'Channel': 'SMD', # Set Channel to SMD
-                # All other fields are intentionally left as None/defaults as per your last clarification
-                'Status': None, 'Completion Date': None,
-                'Re-Open Date': None, 'Allocation Date': None,
-                'Clarification Date': None, 'Aging': None, 'Remarks': None,
-                'Processor': None, 'Category': None
-            }
-            all_consolidated_rows.append(new_row)
-        print(f"Collected {len(df_smd)} rows from SMD.")
+    # Removed the 'if barcode not in df_smd.columns' check,
+    # now we just try to get the barcode, defaulting to '' if not found.
+    # df_smd['barcode'] = df_smd['barcode'].astype(str) # This line is moved into the loop with .get()
+    
+    for index, row in df_smd.iterrows():
+        barcode_val = row.get('barcode', '') # Use .get() with a default empty string if 'barcode' column is missing
+        new_row = {
+            'Barcode': str(barcode_val), # Ensure it's always a string
+            'Company code': row.get('ekorg'),
+            'Region': row.get('material_field'),
+            'Vendor number': row.get('pmd_sno'),
+            'Vendor Name': row.get('supplier_name'),
+            'Received Date': row.get('request_date'),
+            'Requester': row.get('requested_by'),
+            'Today': today_date,
+            'Channel': 'SMD', # Set Channel to SMD
+            # All other fields are intentionally left as None/defaults as per your last clarification
+            'Status': None, 'Completion Date': None,
+            'Re-Open Date': None, 'Allocation Date': None,
+            'Clarification Date': None, 'Aging': None, 'Remarks': None,
+            'Processor': None, 'Category': None
+        }
+        all_consolidated_rows.append(new_row)
+    print(f"Collected {len(df_smd)} rows from SMD.")
 
     if not all_consolidated_rows:
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
@@ -344,8 +345,6 @@ def process_central_file_step3_final_merge_and_needs_review(master_consolidated_
     df_pisa_lookup = clean_column_names(df_pisa_original.copy())
     df_esm_lookup = clean_column_names(df_esm_original.copy())
     df_pm7_lookup = clean_column_names(df_pm7_original.copy())
-    # REMOVED df_smd_lookup and df_smd_indexed as they are not needed for lookups
-    # df_smd_lookup = clean_column_names(df_smd_original.copy())
 
     df_pisa_indexed = pd.DataFrame()
     if 'barcode' in df_pisa_lookup.columns:
@@ -370,15 +369,6 @@ def process_central_file_step3_final_merge_and_needs_review(master_consolidated_
         print(f"PM7 lookup indexed by 'barcode'.")
     else:
         print("Warning: 'barcode' column not found in cleaned PM7 lookup. Cannot perform PM7 lookups.")
-
-    # REMOVED df_smd_indexed creation
-    # df_smd_indexed = pd.DataFrame()
-    # if 'barcode' in df_smd_lookup.columns:
-    #     df_smd_lookup['barcode'] = df_smd_lookup['barcode'].astype(str)
-    #     df_smd_indexed = df_smd_lookup.set_index('barcode')
-    #     print(f"SMD lookup indexed by 'barcode'.")
-    # else:
-    #     print("Warning: 'barcode' column not found in cleaned SMD lookup. Cannot perform SMD lookups.")
 
     if 'Barcode' not in master_consolidated_df.columns:
         return False, "Error: 'Barcode' column not found in the master consolidated file. Cannot proceed with final central file processing (Step 3)."
