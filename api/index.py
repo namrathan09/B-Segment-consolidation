@@ -9,7 +9,7 @@ from flask import Flask, request, render_template, redirect, url_for, send_file,
 from werkzeug.utils import secure_filename
 import logging
 from io import BytesIO
-import base64 # Import base64
+import base64
 
 warnings.filterwarnings('ignore')
 
@@ -24,6 +24,12 @@ app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 # IMPORTANT: Ensure FLASK_SECRET_KEY is set in your Vercel project environment variables
 # A strong, random key is crucial for session security.
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key_for_local_dev_only')
+# Optional: Set session cookie path to root and secure for Vercel production
+# app.config['SESSION_COOKIE_PATH'] = '/'
+# app.config['SESSION_COOKIE_SECURE'] = True # Use True in production with HTTPS
+# app.config['SESSION_COOKIE_HTTPONLY'] = True
+# app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' # Or 'Strict' for more security
+
 
 # --- Global Variables ---
 CONSOLIDATED_OUTPUT_COLUMNS = [
@@ -95,8 +101,7 @@ def find_column_robust(df, target_column_keywords):
     Finds a column in a DataFrame that matches the target keywords,
     ignoring case, spaces, and matching only the initial word.
     """
-    # Ensure df is not empty to avoid errors on accessing df.columns
-    if df.empty:
+    if df is None or df.empty: # Added check for None df
         return None
 
     df_cols = [str(col).lower() for col in df.columns]
@@ -104,14 +109,12 @@ def find_column_robust(df, target_column_keywords):
 
     for original_col in df.columns:
         cleaned_col = str(original_col).strip().lower()
-        # Handle cases like "company_code" or "company code"
         cleaned_col_first_word = cleaned_col.split('_')[0] if '_' in cleaned_col else cleaned_col.split(' ')[0]
 
         if cleaned_col_first_word == target_keywords_processed:
             return original_col
     return None
 
-# Helper to clean a single string for .get() after find_column_robust
 def clean_col_name_str(col_name):
     if col_name is None:
         return None
@@ -1108,6 +1111,7 @@ def process_files():
 
         # Final output saving to BytesIO
         final_central_output_filename = f'CentralFile_FinalOutput_{today_str}.xlsx'
+        consolidated_output_buffer.seek(0) # Ensure buffer is at the start
         try:
             df_ultimate_final_central.to_excel(consolidated_output_buffer, index=False)
             consolidated_output_buffer.seek(0) # Rewind the buffer to the beginning after writing
@@ -1122,8 +1126,8 @@ def process_files():
         session['central_output_filename'] = final_central_output_filename
 
 
-        return render_template('index.html',
-                                central_download_link=url_for('download_consolidated_file'))
+        # Implement PRG pattern: Redirect to a GET endpoint
+        return redirect(url_for('show_consolidated_result'))
 
     except Exception as e:
         flash(f'An unhandled error occurred during consolidated processing: {e}', 'error')
@@ -1136,6 +1140,18 @@ def process_files():
         if os.path.exists(temp_dir_for_uploads):
             shutil.rmtree(temp_dir_for_uploads)
             logger.info(f"Cleaned up temporary upload directory: {temp_dir_for_uploads}")
+
+
+# NEW GET endpoint to display download link after consolidated processing
+@app.route('/show_consolidated_result', methods=['GET'])
+def show_consolidated_result():
+    # Check if download info is in session (set by /process POST)
+    if 'central_output_data' in session and 'central_output_filename' in session:
+        return render_template('index.html', central_download_link=url_for('download_consolidated_file'))
+    else:
+        # If no data found, something went wrong or session expired
+        flash('No consolidated file results found. Please process files again.', 'error')
+        return redirect(url_for('index'))
 
 
 # --- NEW ROUTE FOR PMD LOOKUP ---
@@ -1211,9 +1227,8 @@ def process_pmd_lookup():
         session['pmd_output_data'] = base64.b64encode(pmd_output_buffer.getvalue()).decode('utf-8')
         session['pmd_output_filename'] = pmd_output_filename
         
-        flash('PMD Lookup process completed successfully, file contains two sheets!', 'success')
-        return render_template('index.html',
-                               pmd_download_link=url_for('download_pmd_file'))
+        # Implement PRG pattern: Redirect to a GET endpoint
+        return redirect(url_for('show_pmd_result'))
 
     except Exception as e:
         flash(f'An unhandled error occurred during PMD Lookup: {e}', 'error')
@@ -1226,8 +1241,19 @@ def process_pmd_lookup():
             shutil.rmtree(temp_dir_for_uploads)
             logger.info(f"Cleaned up temporary upload directory: {temp_dir_for_uploads}")
 
+# NEW GET endpoint to display download link after PMD processing
+@app.route('/show_pmd_result', methods=['GET'])
+def show_pmd_result():
+    # Check if download info is in session (set by /process_pmd_lookup POST)
+    if 'pmd_output_data' in session and 'pmd_output_filename' in session:
+        return render_template('index.html', pmd_download_link=url_for('download_pmd_file'))
+    else:
+        # If no data found, something went wrong or session expired
+        flash('No PMD lookup results found. Please process files again.', 'error')
+        return redirect(url_for('index'))
 
-@app.route('/download_consolidated_file', methods=['GET']) # Renamed route
+
+@app.route('/download_consolidated_file', methods=['GET'])
 def download_consolidated_file():
     # Retrieve base64 encoded data and filename from session
     encoded_output_data = session.get('central_output_data')
@@ -1244,7 +1270,6 @@ def download_consolidated_file():
     logger.info(f"Attempting to send consolidated file: {output_filename}")
     try:
         # Clear the session data AFTER successful retrieval and BEFORE sending
-        # This prevents accidental re-downloads or using stale data.
         session.pop('central_output_data', None)
         session.pop('central_output_filename', None)
         
@@ -1259,7 +1284,7 @@ def download_consolidated_file():
         flash(f'Error providing download: {e}. Please try again.', 'error')
         return redirect(url_for('index'))
 
-@app.route('/download_pmd_file', methods=['GET']) # Renamed route
+@app.route('/download_pmd_file', methods=['GET'])
 def download_pmd_file():
     # Retrieve base64 encoded data and filename from session
     encoded_output_data = session.get('pmd_output_data')
