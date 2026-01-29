@@ -353,13 +353,13 @@ text-decoration: underline;
 <li><strong>Received date</strong> (with a space after received, mapped from 'Creation date')</li>
 </ul>
 </li>
-<li><strong>Workon P71 Mandatory Columns & Mapping:</strong> If provided, the Workon P71 file will be appended to the finalized Central File. The columns are same as in the downloaded dump.
+<li><strong>Workon P71 Mandatory Columns & Mapping (Optional):</strong> If provided, the Workon P71 file will be appended to the finalized Central File. The columns are same as in the downloaded dump.
 </li>
-<li><strong>Workon RGBA Mandatory Columns, Filter & Mapping :</strong> If provided, the Workon RGBA file will be filtered and appended to the finalized Central File.
+<li><strong>Workon RGBA Mandatory Columns, Filter & Mapping (Optional):</strong> If provided, the Workon RGBA file will be filtered and appended to the finalized Central File.
 <p><strong>Filter Condition:</strong> Only records where <code>Current Assignee</code> is "VMD GS OSP-NA (GS/OMD-APAC)" will be processed.</p>
 <p>The columns are same as in the downloaded dump.</p>
 </li>
-<li><strong>SMD Data Mapping:</strong> If provided, the SMD Data file will be mapped and appended to the finalized Central File. This channel is **rule-free** and directly maps its data.
+<li><strong>SMD Data Mapping (Optional):</strong> If provided, the SMD Data file will be mapped and appended to the finalized Central File. This channel is **rule-free** and directly maps its data.
 <ul>
 <li><code>Company code</code> will be mapped from 'Ekorg'.</li>
 <li><code>Region</code> will be mapped from 'Material Field'.</li>
@@ -384,7 +384,12 @@ text-decoration: underline;
         <li>Rows with blank 'Valid From' or 'Supplier Name' are excluded from the comparison.</li>
     </ul>
 </li>
-<li><strong>Output:</strong> Generates 'PMD_Lookup_ResultFile.xlsx' containing the unique rows from the PMD Dump, with specific columns and 'Valid From' formatted as YYYY-MM-DD HH:MM AM/PM.</li>
+<li><strong>Output:</strong> Generates 'PMD_Lookup_ResultFile.xlsx' containing the unique rows from the PMD Dump, with specific columns and 'Valid From' formatted as YYYY-MM-DD HH:MM AM/PM. The output file will have two sheets:
+    <ul>
+        <li>'Sheet1_PMD_Original': Contains the unique rows in the original PMD Dump format.</li>
+        <li>'Sheet2_Consolidated_Format': Contains the unique rows mapped to the standard Consolidated Output format.</li>
+    </ul>
+</li>
 </ul>
 </li>
 <li><strong>Processing & Upload:</strong>
@@ -396,7 +401,7 @@ text-decoration: underline;
 <li><strong>Post-Processing Actions (Consolidated File):</strong>
 <ul>
 <li><strong>Rename & Upload:</strong> Replace the newly downloaded file by renaming it to <code>New B_Segment(DD_MM_YYYY)</code> with <strong>today's date</strong> in the Teams channel.</li>
-<li><strong>Archive Old File:</strong> Move the <code>New B_Segment(DD_MM_YYYY)</code> with <strong>yesterday's date</strong> into the <strong><code>Old Data (Do not Modify)</code> folder</strong>.</li>
+<li><strong>Archive Old File:1</code> Move the <code>New B_Segment(DD_MM_YYYY)</code> with <strong>yesterday's date</strong> into the <strong><code>Old Data (Do not Modify)</code> folder</strong>.</li>
 </ul>
 </li>
 </ul>
