@@ -359,47 +359,47 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
         channel = row_consolidated['Channel']
 
         # Get existing values from consolidated row as base
-        new_central_row_data = row_consolidated.to_dict()
+        new_row_data = row_consolidated.to_dict() # Correctly initialized here
 
         # Update specific fields if they are blank and a lookup is possible
         if channel == 'PISA' and not df_pisa_indexed.empty and barcode in df_pisa_indexed.index:
             pisa_row = df_pisa_indexed.loc[barcode]
-            if 'vendor_name' in pisa_row.index and pd.notna(pisa_row['vendor_name']) and not new_central_row_data.get('Vendor Name'):
-                new_central_row_data['Vendor Name'] = pisa_row['vendor_name']
-            if 'vendor_number' in pisa_row.index and pd.notna(pisa_row['vendor_number']) and not new_central_row_data.get('Vendor number'):
-                new_central_row_data['Vendor number'] = pisa_row['vendor_number']
-            if 'company_code' in pisa_row.index and pd.notna(pisa_row['company_code']) and not new_central_row_data.get('Company code'):
-                new_central_row_data['Company code'] = pisa_row['company_code']
-            if 'received_date' in pisa_row.index and pd.notna(pisa_row['received_date']) and not new_central_row_data.get('Received Date'):
-                new_central_row_data['Received Date'] = pisa_row['received_date']
+            if 'vendor_name' in pisa_row.index and pd.notna(pisa_row['vendor_name']) and not new_row_data.get('Vendor Name'):
+                new_row_data['Vendor Name'] = pisa_row['vendor_name']
+            if 'vendor_number' in pisa_row.index and pd.notna(pisa_row['vendor_number']) and not new_row_data.get('Vendor number'):
+                new_row_data['Vendor number'] = pisa_row['vendor_number']
+            if 'company_code' in pisa_row.index and pd.notna(pisa_row['company_code']) and not new_row_data.get('Company code'):
+                new_row_data['Company code'] = pisa_row['company_code']
+            if 'received_date' in pisa_row.index and pd.notna(pisa_row['received_date']) and not new_row_data.get('Received Date'):
+                new_row_data['Received Date'] = pisa_row['received_date']
 
         elif channel == 'ESM' and not df_esm_indexed.empty and barcode in df_esm_indexed.index:
             esm_row = df_esm_indexed.loc[barcode]
-            if 'company_code' in esm_row.index and pd.notna(esm_row['company_code']) and not new_central_row_data.get('Company code'):
-                new_central_row_data['Company code'] = esm_row['company_code']
-            if 'subcategory' in esm_row.index and pd.notna(esm_row['subcategory']) and not new_central_row_data.get('Category'):
-                new_central_row_data['Category'] = esm_row['subcategory']
-            if 'vendor_name' in esm_row.index and pd.notna(esm_row['vendor_name']) and not new_central_row_data.get('Vendor Name'):
-                new_central_row_data['Vendor Name'] = esm_row['vendor_name']
-            if 'vendor_number' in esm_row.index and pd.notna(esm_row['vendor_number']) and not new_central_row_data.get('Vendor number'):
-                new_central_row_data['Vendor number'] = esm_row['vendor_number']
-            if 'received_date' in esm_row.index and pd.notna(esm_row['received_date']) and not new_central_row_data.get('Received Date'):
-                new_central_row_data['Received Date'] = esm_row['received_date'] # Corrected from pisa_row to esm_row
+            if 'company_code' in esm_row.index and pd.notna(esm_row['company_code']) and not new_row_data.get('Company code'):
+                new_row_data['Company code'] = esm_row['company_code']
+            if 'subcategory' in esm_row.index and pd.notna(esm_row['subcategory']) and not new_row_data.get('Category'):
+                new_row_data['Category'] = esm_row['subcategory']
+            if 'vendor_name' in esm_row.index and pd.notna(esm_row['vendor_name']) and not new_row_data.get('Vendor Name'):
+                new_row_data['Vendor Name'] = esm_row['vendor_name']
+            if 'vendor_number' in esm_row.index and pd.notna(esm_row['vendor_number']) and not new_row_data.get('Vendor number'):
+                new_row_data['Vendor number'] = esm_row['vendor_number']
+            if 'received_date' in esm_row.index and pd.notna(esm_row['received_date']) and not new_row_data.get('Received Date'):
+                new_row_data['Received Date'] = esm_row['received_date'] # Corrected from pisa_row to esm_row
 
         elif channel == 'PM7' and not df_pm7_indexed.empty and barcode in df_pm7_indexed.index:
             pm7_row = df_pm7_indexed.loc[barcode]
-            if 'vendor_name' in pm7_row.index and pd.notna(pm7_row['vendor_name']) and not new_central_row_data.get('Vendor Name'):
-                new_central_row_data['Vendor Name'] = pm7_row['vendor_name']
-            if 'vendor_number' in pm7_row.index and pd.notna(pm7_row['vendor_number']) and not new_central_row_data.get('Vendor number'):
-                new_central_row_data['Vendor number'] = pm7_row['vendor_number']
-            if 'company_code' in pm7_row.index and pd.notna(pm7_row['company_code']) and not new_central_row_data.get('Company code'):
-                new_central_row_data['Company code'] = pm7_row['company_code']
-            if 'received_date' in pm7_row.index and pd.notna(pm7_row['received_date']) and not new_central_row_data.get('Received Date'):
-                new_central_row_data['Received Date'] = pm7_row['received_date']
+            if 'vendor_name' in pm7_row.index and pd.notna(pm7_row['vendor_name']) and not new_row_data.get('Vendor Name'):
+                new_row_data['Vendor Name'] = pm7_row['vendor_name']
+            if 'vendor_number' in pm7_row.index and pd.notna(pm7_row['vendor_number']) and not new_row_data.get('Vendor number'):
+                new_row_data['Vendor number'] = pm7_row['vendor_number']
+            if 'company_code' in pm7_row.index and pd.notna(pm7_row['company_code']) and not new_row_data.get('Company code'):
+                new_row_data['Company code'] = pm7_row['company_code']
+            if 'received_date' in pm7_row.index and pd.notna(pm7_row['received_date']) and not new_row_data.get('Received Date'):
+                new_row_data['Received Date'] = pm7_row['received_date']
 
         # Set or override specific values for new records
-        new_central_row_data['Status'] = 'New'
-        new_central_row_data['Allocation Date'] = today_date_formatted # Only for new records
+        new_row_data['Status'] = 'New' # Corrected variable name
+        new_row_data['Allocation Date'] = today_date_formatted # Corrected variable name
 
         all_new_central_rows_data.append(new_row_data)
 
@@ -674,7 +674,7 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
     # --- Apply Region Mapping to RGBA data ---
     if region_map and 'Company code' in df_mapped_workon_rgba.columns:
         df_mapped_workon_rgba['Company code'] = df_mapped_workon_rgba['Company code'].astype(str).str.strip().str.upper().str[:4]
-        df_mapped_workon_rgba['Region'] = df_mapped_workon_rgba['Company code'].map(region_map).fillna(df_mapped_workon_rgba['Region'])
+        df_mapped_workon_rgba['Region'] = df_mapped_workon_rgba['Company code'].map(global_region_map).fillna(df_mapped_workon_rgba['Region'])
         df_mapped_workon_rgba['Region'] = df_mapped_workon_rgba['Region'].fillna('')
         logger.info(f"Region mapping applied to {len(df_mapped_workon_rgba)} Workon RGBA records.")
     else:
@@ -1205,15 +1205,12 @@ def process_pmd_lookup():
         df_pmd_central_raw = pd.read_excel(central_path)
 
         # Call the updated function that returns three items: success status, df_sheet1, df_sheet2
-        success, df_sheet1_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
+        success, df_sheet1, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
 
         if not success:
-            flash(f'PMD Lookup failed: {df_sheet1_or_error_msg}', 'error') # df_sheet1 contains error message on failure
-            logger.error(f"PMD Lookup process failed: {df_sheet1_or_error_msg}")
+            flash(f'PMD Lookup failed: {df_sheet1}', 'error') # df_sheet1 contains error message on failure
+            logger.error(f"PMD Lookup process failed: {df_sheet1}")
             return redirect(url_for('index'))
-
-        # If successful, df_sheet1_or_error_msg is actually df_sheet1
-        df_sheet1 = df_sheet1_or_error_msg
 
         today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         pmd_output_filename = f'PMD_Lookup_ResultFile_{today_str}.xlsx'
