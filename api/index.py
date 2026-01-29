@@ -8,6 +8,7 @@ import re
 from flask import Flask, request, render_template, redirect, url_for, send_file, flash, session
 from werkzeug.utils import secure_filename
 import logging
+from io import BytesIO # Import BytesIO for in-memory file handling
 
 warnings.filterwarnings('ignore')
 
@@ -36,7 +37,6 @@ PMD_OUTPUT_COLUMNS_SHEET1 = [ # Specific columns for Sheet1 (original format)
 
 
 # --- Configure Logging ---
-# REMOVED FileHandler for Vercel deployment compatibility
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s',
                     handlers=[
@@ -756,8 +756,12 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
 
     # --- Drop specified columns from PMD Dump (using cleaned names) ---
     cols_to_drop = ['sl_no', 'duns']
-    pmd_dump_df_cleaned_cols.drop(columns=[col for col in cols_to_drop if col in pmd_dump_df_cleaned_cols.columns], inplace=True)
-    logger.info(f"Dropped columns {cols_to_drop} from PMD Dump if present.")
+    for col in cols_to_drop:
+        if col in pmd_dump_df_cleaned_cols.columns:
+            pmd_dump_df_cleaned_cols.drop(columns=[col], inplace=True)
+            logger.info(f"Dropped column '{col}' from PMD Dump.")
+        else:
+            logger.warning(f"Attempted to drop column '{col}' from PMD Dump, but it was not found.")
 
     # --- Filter out specific countries from PMD Dump (using cleaned names) ---
     excluded_countries = ['cn', 'id', 'tw', 'hk', 'jp', 'kr', 'my', 'ph', 'sg', 'th', 'vn']
@@ -829,19 +833,22 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
     logger.info(f"Found {len(unique_dump_rows_for_sheet_generation)} unique rows in PMD Dump not present in PMD Central.")
 
     if unique_dump_rows_for_sheet_generation.empty:
+        logger.info("No unique entries found in PMD Dump file compared to PMD Central file.")
         return False, "No unique entries found in PMD Dump file compared to PMD Central file.", None
 
 
     # --- Generate DataFrame for Sheet 1 (Original PMD format) ---
     df_sheet1 = pd.DataFrame()
-    for col_name in PMD_OUTPUT_COLUMNS_SHEET1:
-        # Re-using df_pmd_dump_raw for find_column_robust to get original column names for Sheet 1
-        robust_found_raw_col = find_column_robust(df_pmd_dump_raw, col_name) 
-        if robust_found_raw_col:
-            df_sheet1[col_name] = unique_dump_rows_for_sheet_generation[clean_col_name_str(robust_found_raw_col)]
+    for col_name_output in PMD_OUTPUT_COLUMNS_SHEET1:
+        # Robustly find the corresponding raw column name in the original PMD dump
+        robust_found_raw_col = find_column_robust(df_pmd_dump_raw, col_name_output)
+        cleaned_col_name_in_filtered = clean_col_name_str(robust_found_raw_col) if robust_found_raw_col else None
+        
+        if cleaned_col_name_in_filtered and cleaned_col_name_in_filtered in unique_dump_rows_for_sheet_generation.columns:
+            df_sheet1[col_name_output] = unique_dump_rows_for_sheet_generation[cleaned_col_name_in_filtered]
         else:
-            df_sheet1[col_name] = ''
-            logger.warning(f"Sheet1 column '{col_name}' not found in PMD Dump for unique rows. Added as blank.")
+            df_sheet1[col_name_output] = ''
+            logger.warning(f"Sheet1 output column '{col_name_output}' not found or mapped from original PMD Dump. Added as blank.")
     
     # Format 'Valid From' for Sheet1
     if 'Valid From' in df_sheet1.columns:
@@ -863,7 +870,7 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
     valid_from_col_raw_for_sheet2 = find_column_robust(df_pmd_dump_raw, 'Valid From') # Direct map from Valid From
     requested_by_col_raw = find_column_robust(df_pmd_dump_raw, 'Requested By')
 
-    for index, row in unique_dump_rows_for_sheet_generation.iterrows():
+    for index, row in unique_dump_rows_for_sheet_generation.iterrows(): # Iterate over the filtered dump data
         new_row_data = {col: '' for col in CONSOLIDATED_OUTPUT_COLUMNS} # Initialize all with blank
 
         # Hardcoded values
@@ -871,20 +878,17 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
         new_row_data['Allocation Date'] = today_date_formatted
         new_row_data['Today'] = today_date_formatted
 
-        # Mapped values from cleaned columns in 'row'
-        new_row_data['Category'] = str(row.get(clean_col_name_str(type_col_raw), ''))
-        new_row_data['Company code'] = str(row.get(clean_col_name_str(bukr_col_raw), ''))
-        new_row_data['Region'] = str(row.get(clean_col_name_str(country_col_raw), ''))
-        new_row_data['Vendor number'] = str(row.get(clean_col_name_str(ebsno_col_raw), ''))
-        new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(supplier_name_col_raw), ''))
-        new_row_data['Requester'] = str(row.get(clean_col_name_str(requested_by_col_raw), ''))
+        # Mapped values from cleaned columns in 'row' (which is from unique_dump_rows_for_sheet_generation)
+        new_row_data['Category'] = str(row.get(clean_col_name_str(type_col_raw), '')) if type_col_raw else ''
+        new_row_data['Company code'] = str(row.get(clean_col_name_str(bukr_col_raw), '')) if bukr_col_raw else ''
+        new_row_data['Region'] = str(row.get(clean_col_name_str(country_col_raw), '')) if country_col_raw else ''
+        new_row_data['Vendor number'] = str(row.get(clean_col_name_str(ebsno_col_raw), '')) if ebsno_col_raw else ''
+        new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(supplier_name_col_raw), '')) if supplier_name_col_raw else ''
+        new_row_data['Requester'] = str(row.get(clean_col_name_str(requested_by_col_raw), '')) if requested_by_col_raw else ''
 
-        # --- CORRECTED: Received Date logic - directly map from Valid From, and format with format_date_to_pmddump ---
+        # Received Date logic - map from Valid From, and format with format_date_to_pmddump
         valid_from_val_for_sheet2 = row.get(clean_col_name_str(valid_from_col_raw_for_sheet2)) if valid_from_col_raw_for_sheet2 else None
-        
-        # Apply the specific PMD dump date format for "Received Date" in Sheet 2
         new_row_data['Received Date'] = format_date_to_pmddump(pd.Series([valid_from_val_for_sheet2])).iloc[0] if valid_from_val_for_sheet2 is not None else ''
-        # --- END CORRECTION ---
 
         df_sheet2_rows.append(new_row_data)
     
@@ -893,7 +897,7 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
 
 
     logger.info("PMD Lookup Process completed successfully, generating two sheets.")
-    return True, df_sheet1, df_sheet2 # Now return two DFs
+    return True, df_sheet1, df_sheet2 # Now return three items
 
 
 # --- Flask Routes ---
@@ -901,20 +905,20 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
 @app.route('/', methods=['GET'])
 def index():
     # Clear any previous download links when returning to index
-    session.pop('central_output_path', None)
-    session.pop('pmd_output_path', None)
+    # We store file content in session for download
     return render_template('index.html')
 
 @app.route('/process', methods=['POST'])
 def process_files():
-    temp_dir = tempfile.mkdtemp(dir='/tmp')
-
-    # Clear all relevant session data for a fresh start for this process
-    session.pop('central_output_path', None)
-    session.pop('temp_dir_consolidated', None) # Renamed to avoid clash
+    # Use BytesIO for in-memory handling for Vercel
+    consolidated_output_buffer = BytesIO()
+    
+    # Clear relevant session data for a fresh start for this process
+    session.pop('central_output_data', None) # Store data directly, not path
     session.pop('region_map', None)
     
-    session['temp_dir_consolidated'] = temp_dir # Store consolidated temp dir
+    # Note: temp_dir will still be used for intermediate file uploads, but not for the final output storage.
+    temp_dir_for_uploads = tempfile.mkdtemp(dir='/tmp')
 
     REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')
 
@@ -930,21 +934,19 @@ def process_files():
         for key in mandatory_file_keys:
             if key not in request.files or request.files[key].filename == '':
                 flash(f'Missing mandatory file: "{key}". All PISA, ESM, PM7, and Central files are required.', 'error')
-                if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-                session.pop('temp_dir_consolidated', None)
+                if os.path.exists(temp_dir_for_uploads): shutil.rmtree(temp_dir_for_uploads)
                 return redirect(url_for('index'))
             
             file = request.files[key]
             if file and file.filename.lower().endswith('.xlsx'):
                 filename = secure_filename(file.filename)
-                file_path = os.path.join(temp_dir, filename)
+                file_path = os.path.join(temp_dir_for_uploads, filename)
                 file.save(file_path)
                 uploaded_files[key] = file_path
                 logger.info(f'File "{filename}" uploaded successfully.')
             else:
                 flash(f'Invalid file type for "{key}". Please upload an .xlsx file.', 'error')
-                if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-                session.pop('temp_dir_consolidated', None)
+                if os.path.exists(temp_dir_for_uploads): shutil.rmtree(temp_dir_for_uploads)
                 return redirect(url_for('index'))
 
         # Process optional files
@@ -953,7 +955,7 @@ def process_files():
             if file and file.filename != '':
                 if file.filename.lower().endswith('.xlsx'):
                     filename = secure_filename(file.filename)
-                    file_path = os.path.join(temp_dir, filename)
+                    file_path = os.path.join(temp_dir_for_uploads, filename)
                     file.save(file_path)
                     uploaded_files[key] = file_path
                     logger.info(f'Optional file "{filename}" uploaded successfully.')
@@ -1001,9 +1003,8 @@ def process_files():
         except Exception as e:
             flash(f"Error loading one or more input Excel files or the region mapping file: {e}. Please ensure all files are valid .xlsx formats and the mapping file exists.", 'error')
             logger.error(f"Error loading input files: {e}")
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-            session.pop('temp_dir_consolidated', None)
+            if os.path.exists(temp_dir_for_uploads):
+                shutil.rmtree(temp_dir_for_uploads)
             return redirect(url_for('index'))
 
 
@@ -1019,19 +1020,13 @@ def process_files():
         elif not df_consolidated_pisa_esm_pm7.empty:
              flash('Data consolidation from PISA, ESM, PM7 completed successfully!', 'success')
         
-        # Intermediate path for consolidated file (PISA, ESM, PM7 only)
-        consolidated_output_filename = f'ConsolidatedData_PISA_ESM_PM7_{today_str}.xlsx'
-        consolidated_output_file_path = os.path.join(temp_dir, consolidated_output_filename)
-        df_consolidated_pisa_esm_pm7.to_excel(consolidated_output_file_path, index=False)
-
         # --- Step 2: Update existing central file records based on PISA/ESM/PM7 consolidation ---
         success, df_central_updated_existing = process_central_file_step2_update_existing(
             df_consolidated_pisa_esm_pm7, initial_central_file_input_path
         )
         if not success:
             flash(f'Central File Processing (Step 2) Error: {df_central_updated_existing}', 'error')
-            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-            session.pop('temp_dir_consolidated', None)
+            if os.path.exists(temp_dir_for_uploads): shutil.rmtree(temp_dir_for_uploads)
             return redirect(url_for('index'))
 
         # --- Step 3: Final Merge (Add new PISA/ESM/PM7 barcodes, mark 'Needs Review', apply Region Mapping) ---
@@ -1040,8 +1035,7 @@ def process_files():
         )
         if not success:
             flash(f'Central File Processing (Step 3) Error: {df_final_central_pisa_esm_pm7}', 'error')
-            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-            session.pop('temp_dir_consolidated', None)
+            if os.path.exists(temp_dir_for_uploads): shutil.rmtree(temp_dir_for_uploads)
             return redirect(url_for('index'))
         flash('Central file updated and merged with PISA, ESM, PM7 data successfully!', 'success')
 
@@ -1084,7 +1078,6 @@ def process_files():
             logger.info("INFO: SMD Data file not provided or empty. Skipping processing.")
 
 
-        # Assign the final consolidated DataFrame for the rest of the processing
         df_ultimate_final_central = df_current_consolidated
 
 
@@ -1111,46 +1104,49 @@ def process_files():
         # --- END FINAL AGING CALCULATION ---
 
 
-        # Final output saving
+        # Final output saving to BytesIO
         final_central_output_filename = f'CentralFile_FinalOutput_{today_str}.xlsx'
-        final_central_output_file_path = os.path.join(temp_dir, final_central_output_filename)
-
+        consolidated_output_buffer.seek(0) # Ensure buffer is at the start
         try:
-            df_ultimate_final_central.to_excel(final_central_output_file_path, index=False)
+            df_ultimate_final_central.to_excel(consolidated_output_buffer, index=False)
+            consolidated_output_buffer.seek(0) # Rewind the buffer to the beginning after writing
         except Exception as e:
-            flash(f"Error saving final central file: {e}", 'error')
-            logger.error(f"Error saving final central file: {e}")
-            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-            session.pop('temp_dir_consolidated', None)
+            flash(f"Error saving final central file to memory: {e}", 'error')
+            logger.error(f"Error saving final central file to memory: {e}")
+            if os.path.exists(temp_dir_for_uploads): shutil.rmtree(temp_dir_for_uploads)
             return redirect(url_for('index'))
 
-        session['central_output_path'] = final_central_output_file_path
+        # Store the buffer and filename in session
+        session['central_output_data'] = consolidated_output_buffer.getvalue()
+        session['central_output_filename'] = final_central_output_filename
+
 
         return render_template('index.html',
-                                central_download_link=url_for('download_file', filename=os.path.basename(final_central_output_file_path))
-                              )
+                                central_download_link=url_for('download_consolidated_file')) # Changed download route name
 
     except Exception as e:
-        flash(f'An unhandled error occurred during processing: {e}', 'error')
+        flash(f'An unhandled error occurred during consolidated processing: {e}', 'error')
         logger.exception("Unhandled error during consolidated file processing:")
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-        session.pop('temp_dir_consolidated', None)
+        if os.path.exists(temp_dir_for_uploads):
+            shutil.rmtree(temp_dir_for_uploads)
         return redirect(url_for('index'))
     finally:
-        pass
+        # Clean up intermediate upload temp directory
+        if os.path.exists(temp_dir_for_uploads):
+            shutil.rmtree(temp_dir_for_uploads)
+            logger.info(f"Cleaned up temporary upload directory: {temp_dir_for_uploads}")
 
 
 # --- NEW ROUTE FOR PMD LOOKUP ---
 @app.route('/process_pmd_lookup', methods=['POST'])
 def process_pmd_lookup():
-    temp_dir = tempfile.mkdtemp(dir='/tmp')
+    pmd_output_buffer = BytesIO() # Use BytesIO for in-memory handling for Vercel
 
     # Clear session data specific to PMD lookup for a fresh start
-    session.pop('pmd_output_path', None)
-    session.pop('temp_dir_pmd', None) # New session key for PMD temp dir
+    session.pop('pmd_output_data', None) # Store data directly, not path
+    session.pop('pmd_output_filename', None) # Store filename
 
-    session['temp_dir_pmd'] = temp_dir # Store PMD temp dir
+    temp_dir_for_uploads = tempfile.mkdtemp(dir='/tmp') # Temp dir for current request's uploads
 
     try:
         pmd_dump_file = request.files.get('pmd_dump_file')
@@ -1171,8 +1167,8 @@ def process_pmd_lookup():
             logger.error('Invalid file format for PMD files. Must be .xlsx.')
             return redirect(url_for('index'))
 
-        dump_path = os.path.join(temp_dir, secure_filename(pmd_dump_file.filename))
-        central_path = os.path.join(temp_dir, secure_filename(pmd_central_file.filename))
+        dump_path = os.path.join(temp_dir_for_uploads, secure_filename(pmd_dump_file.filename))
+        central_path = os.path.join(temp_dir_for_uploads, secure_filename(pmd_central_file.filename))
 
         pmd_dump_file.save(dump_path)
         pmd_central_file.save(central_path)
@@ -1183,157 +1179,112 @@ def process_pmd_lookup():
         df_pmd_central_raw = pd.read_excel(central_path)
 
         # Call the updated function that returns three items: success status, df_sheet1, df_sheet2
-        success, result_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
+        success, df_sheet1_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
 
         if not success:
-            flash(f'PMD Lookup failed: {result_or_error_msg}', 'error') # df_sheet1 contains error message on failure
-            logger.error(f"PMD Lookup process failed: {result_or_error_msg}")
+            flash(f'PMD Lookup failed: {df_sheet1_or_error_msg}', 'error')
+            logger.error(f"PMD Lookup process failed: {df_sheet1_or_error_msg}")
             return redirect(url_for('index'))
 
-        # If successful, result_or_error_msg is actually df_sheet1
-        df_sheet1 = result_or_error_msg
+        # If successful, df_sheet1_or_error_msg is actually df_sheet1
+        df_sheet1 = df_sheet1_or_error_msg
 
         today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         pmd_output_filename = f'PMD_Lookup_ResultFile_{today_str}.xlsx'
-        pmd_output_file_path = os.path.join(temp_dir, pmd_output_filename)
         
         try:
-            # Use ExcelWriter to write to multiple sheets
-            with pd.ExcelWriter(pmd_output_file_path, engine='xlsxwriter') as writer:
+            # Use ExcelWriter to write to multiple sheets in memory
+            with pd.ExcelWriter(pmd_output_buffer, engine='xlsxwriter') as writer:
                 df_sheet1.to_excel(writer, sheet_name='Sheet1_PMD_Original', index=False)
                 df_sheet2.to_excel(writer, sheet_name='Sheet2_Consolidated_Format', index=False)
-            logger.info(f"PMD Lookup result file saved to {pmd_output_file_path} with two sheets.")
+            pmd_output_buffer.seek(0) # Rewind the buffer to the beginning after writing
+            logger.info("PMD Lookup result file saved to memory with two sheets.")
             
         except Exception as e:
-            flash(f"Error saving PMD Lookup result file with multiple sheets: {e}", 'error')
+            flash(f"Error saving PMD Lookup result file to memory: {e}", 'error')
             logger.error(f"Error saving PMD Lookup result file: {e}")
-            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-            session.pop('temp_dir_pmd', None)
+            if os.path.exists(temp_dir_for_uploads): shutil.rmtree(temp_dir_for_uploads)
             return redirect(url_for('index'))
 
-        session['pmd_output_path'] = pmd_output_file_path
+        # Store the buffer and filename in session
+        session['pmd_output_data'] = pmd_output_buffer.getvalue()
+        session['pmd_output_filename'] = pmd_output_filename
+        
         flash('PMD Lookup process completed successfully, file contains two sheets!', 'success')
         return render_template('index.html',
-                               pmd_download_link=url_for('download_pmd_file', filename=os.path.basename(pmd_output_file_path)))
+                               pmd_download_link=url_for('download_pmd_file')) # Changed download route name
 
     except Exception as e:
         flash(f'An unhandled error occurred during PMD Lookup: {e}', 'error')
         logger.exception("Unhandled error during PMD Lookup processing:")
-        if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-        session.pop('temp_dir_pmd', None)
+        if os.path.exists(temp_dir_for_uploads): shutil.rmtree(temp_dir_for_uploads)
         return redirect(url_for('index'))
     finally:
-        pass
+        # Clean up intermediate upload temp directory
+        if os.path.exists(temp_dir_for_uploads):
+            shutil.rmtree(temp_dir_for_uploads)
+            logger.info(f"Cleaned up temporary upload directory: {temp_dir_for_uploads}")
 
-@app.route('/download/<filename>', methods=['GET'])
-def download_file(filename):
-    # This route handles the consolidated central file download
-    file_path_in_temp = None
-    temp_dir = session.get('temp_dir_consolidated') # Use consolidated temp_dir
 
-    logger.info(f"Download requested for consolidated file: {filename}")
+@app.route('/download_consolidated_file', methods=['GET']) # Renamed route
+def download_consolidated_file():
+    # Retrieve data and filename from session
+    output_data = session.pop('central_output_data', None)
+    output_filename = session.pop('central_output_filename', None)
 
-    if not temp_dir:
-        logger.warning("Consolidated temp_dir not found in session.")
+    if output_data is None or output_filename is None:
+        logger.warning("Consolidated output data not found in session for download.")
         flash('File not found for download or session expired. Please re-run the process.', 'error')
         return redirect(url_for('index'))
 
-    central_session_path = session.get('central_output_path')
-
-    if central_session_path and os.path.basename(central_session_path) == filename:
-        file_path_in_temp = os.path.join(temp_dir, filename)
-        logger.info(f"Matched consolidated central file. Reconstructed path: {file_path_in_temp}")
-    else:
-        logger.warning(f"Filename '{filename}' did not match the final central output file in session.")
-
-    if file_path_in_temp and os.path.exists(file_path_in_temp):
-        logger.info(f"File '{file_path_in_temp}' exists. Attempting to send.")
-        try:
-            response = send_file(
-                file_path_in_temp,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
-                download_name=filename
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Exception while sending consolidated file '{file_path_in_temp}': {e}")
-            flash(f'Error providing download: {e}. Please try again.', 'error')
-            return redirect(url_for('index'))
-    else:
-        logger.warning(f"File '{filename}' not found for download or session data missing/expired. Full path attempted: {file_path_in_temp}")
-        flash('File not found for download or session expired. Please re-run the process.', 'error')
+    logger.info(f"Attempting to send consolidated file: {output_filename}")
+    try:
+        return send_file(
+            BytesIO(output_data),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=output_filename
+        )
+    except Exception as e:
+        logger.error(f"Exception while sending consolidated file '{output_filename}': {e}")
+        flash(f'Error providing download: {e}. Please try again.', 'error')
         return redirect(url_for('index'))
 
-# --- NEW DOWNLOAD ROUTE FOR PMD LOOKUP RESULT ---
-@app.route('/download_pmd_file/<filename>', methods=['GET'])
-def download_pmd_file(filename):
-    file_path_in_temp = None
-    temp_dir = session.get('temp_dir_pmd') # Use PMD specific temp_dir
+@app.route('/download_pmd_file', methods=['GET']) # Renamed route
+def download_pmd_file():
+    # Retrieve data and filename from session
+    output_data = session.pop('pmd_output_data', None)
+    output_filename = session.pop('pmd_output_filename', None)
 
-    logger.info(f"Download requested for PMD lookup file: {filename}")
-
-    if not temp_dir:
-        logger.warning("PMD temp_dir not found in session.")
+    if output_data is None or output_filename is None:
+        logger.warning("PMD output data not found in session for download.")
         flash('PMD result file not found for download or session expired. Please re-run the PMD Lookup process.', 'error')
         return redirect(url_for('index'))
 
-    pmd_session_path = session.get('pmd_output_path')
-
-    if pmd_session_path and os.path.basename(pmd_session_path) == filename:
-        file_path_in_temp = os.path.join(temp_dir, filename)
-        logger.info(f"Matched PMD lookup result file. Reconstructed path: {file_path_in_temp}")
-    else:
-        logger.warning(f"Filename '{filename}' did not match the PMD lookup output file in session.")
-
-    if file_path_in_temp and os.path.exists(file_path_in_temp):
-        logger.info(f"File '{file_path_in_temp}' exists. Attempting to send.")
-        try:
-            response = send_file(
-                file_path_in_temp,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
-                download_name=filename
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Exception while sending PMD lookup file '{file_path_in_temp}': {e}")
-            flash(f'Error providing PMD download: {e}. Please try again.', 'error')
-            return redirect(url_for('index'))
-    else:
-        logger.warning(f"File '{filename}' not found for download or session data missing/expired. Full path attempted: {file_path_in_temp}")
-        flash('PMD result file not found for download or session expired. Please re-run the PMD Lookup process.', 'error')
+    logger.info(f"Attempting to send PMD lookup file: {output_filename}")
+    try:
+        return send_file(
+            BytesIO(output_data),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=output_filename
+        )
+    except Exception as e:
+        logger.error(f"Exception while sending PMD lookup file '{output_filename}': {e}")
+        flash(f'Error providing PMD download: {e}. Please try again.', 'error')
         return redirect(url_for('index'))
 
 @app.route('/cleanup_session', methods=['GET'])
 def cleanup_session():
-    # Cleanup for consolidated process
-    temp_dir_consolidated = session.get('temp_dir_consolidated')
-    if temp_dir_consolidated and os.path.exists(temp_dir_consolidated):
-        try:
-            shutil.rmtree(temp_dir_consolidated)
-            logger.info(f"Cleaned up consolidated temporary directory: {temp_dir_consolidated}")
-            flash('Temporary consolidated files cleaned up.', 'info')
-        except OSError as e:
-            logger.error(f"Error removing consolidated temporary directory {temp_dir_consolidated}: {e}")
-            flash(f'Error cleaning up consolidated temporary files: {e}', 'error')
-    session.pop('temp_dir_consolidated', None)
-    session.pop('central_output_path', None)
+    # This function is now less critical for file cleanup as files are in memory or deleted promptly.
+    # It mostly ensures session variables are reset.
+    session.pop('central_output_data', None)
+    session.pop('central_output_filename', None)
+    session.pop('pmd_output_data', None)
+    session.pop('pmd_output_filename', None)
     session.pop('region_map', None)
-
-    # Cleanup for PMD lookup process
-    temp_dir_pmd = session.get('temp_dir_pmd')
-    if temp_dir_pmd and os.path.exists(temp_dir_pmd):
-        try:
-            shutil.rmtree(temp_dir_pmd)
-            logger.info(f"Cleaned up PMD temporary directory: {temp_dir_pmd}")
-            flash('Temporary PMD lookup files cleaned up.', 'info')
-        except OSError as e:
-            logger.error(f"Error removing PMD temporary directory {temp_dir_pmd}: {e}")
-            flash(f'Error cleaning up PMD temporary files: {e}', 'error')
-    session.pop('temp_dir_pmd', None)
-    session.pop('pmd_output_path', None)
     
+    flash('Session data cleaned up.', 'info') # Updated message
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
