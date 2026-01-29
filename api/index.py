@@ -65,7 +65,7 @@ def format_date_to_pmddump(date_series):
     """
     datetime_series = pd.to_datetime(date_series, errors='coerce')
     formatted_series = datetime_series.apply(
-        lambda x: x.strftime('%Y-%m-%d %I:%M %p') if pd.notna(x) else '' # Changed %H to %I for 12-hour format with AM/PM
+        lambda x: x.strftime('%Y-%m-%d %H:%M %p') if pd.notna(x) else ''
     )
     return formatted_series
 
@@ -359,49 +359,49 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
         channel = row_consolidated['Channel']
 
         # Get existing values from consolidated row as base
-        new_row_data = row_consolidated.to_dict() # Correctly initialized here
+        new_central_row_data = row_consolidated.to_dict()
 
         # Update specific fields if they are blank and a lookup is possible
         if channel == 'PISA' and not df_pisa_indexed.empty and barcode in df_pisa_indexed.index:
             pisa_row = df_pisa_indexed.loc[barcode]
-            if 'vendor_name' in pisa_row.index and pd.notna(pisa_row['vendor_name']) and not new_row_data.get('Vendor Name'):
-                new_row_data['Vendor Name'] = pisa_row['vendor_name']
-            if 'vendor_number' in pisa_row.index and pd.notna(pisa_row['vendor_number']) and not new_row_data.get('Vendor number'):
-                new_row_data['Vendor number'] = pisa_row['vendor_number']
-            if 'company_code' in pisa_row.index and pd.notna(pisa_row['company_code']) and not new_row_data.get('Company code'):
-                new_row_data['Company code'] = pisa_row['company_code']
-            if 'received_date' in pisa_row.index and pd.notna(pisa_row['received_date']) and not new_row_data.get('Received Date'):
-                new_row_data['Received Date'] = pisa_row['received_date']
+            if 'vendor_name' in pisa_row.index and pd.notna(pisa_row['vendor_name']) and not new_central_row_data.get('Vendor Name'):
+                new_central_row_data['Vendor Name'] = pisa_row['vendor_name']
+            if 'vendor_number' in pisa_row.index and pd.notna(pisa_row['vendor_number']) and not new_central_row_data.get('Vendor number'):
+                new_central_row_data['Vendor number'] = pisa_row['vendor_number']
+            if 'company_code' in pisa_row.index and pd.notna(pisa_row['company_code']) and not new_central_row_data.get('Company code'):
+                new_central_row_data['Company code'] = pisa_row['company_code']
+            if 'received_date' in pisa_row.index and pd.notna(pisa_row['received_date']) and not new_central_row_data.get('Received Date'):
+                new_central_row_data['Received Date'] = pisa_row['received_date']
 
         elif channel == 'ESM' and not df_esm_indexed.empty and barcode in df_esm_indexed.index:
             esm_row = df_esm_indexed.loc[barcode]
-            if 'company_code' in esm_row.index and pd.notna(esm_row['company_code']) and not new_row_data.get('Company code'):
-                new_row_data['Company code'] = esm_row['company_code']
-            if 'subcategory' in esm_row.index and pd.notna(esm_row['subcategory']) and not new_row_data.get('Category'):
-                new_row_data['Category'] = esm_row['subcategory']
-            if 'vendor_name' in esm_row.index and pd.notna(esm_row['vendor_name']) and not new_row_data.get('Vendor Name'):
-                new_row_data['Vendor Name'] = esm_row['vendor_name']
-            if 'vendor_number' in esm_row.index and pd.notna(esm_row['vendor_number']) and not new_row_data.get('Vendor number'):
-                new_row_data['Vendor number'] = esm_row['vendor_number']
-            if 'received_date' in esm_row.index and pd.notna(esm_row['received_date']) and not new_row_data.get('Received Date'):
-                new_row_data['Received Date'] = esm_row['received_date'] # Corrected from pisa_row to esm_row
+            if 'company_code' in esm_row.index and pd.notna(esm_row['company_code']) and not new_central_row_data.get('Company code'):
+                new_central_row_data['Company code'] = esm_row['company_code']
+            if 'subcategory' in esm_row.index and pd.notna(esm_row['subcategory']) and not new_central_row_data.get('Category'):
+                new_central_row_data['Category'] = esm_row['subcategory']
+            if 'vendor_name' in esm_row.index and pd.notna(esm_row['vendor_name']) and not new_central_row_data.get('Vendor Name'):
+                new_central_row_data['Vendor Name'] = esm_row['vendor_name']
+            if 'vendor_number' in esm_row.index and pd.notna(esm_row['vendor_number']) and not new_central_row_data.get('Vendor number'):
+                new_central_row_data['Vendor number'] = esm_row['vendor_number']
+            if 'received_date' in esm_row.index and pd.notna(esm_row['received_date']) and not new_central_row_data.get('Received Date'):
+                new_central_row_data['Received Date'] = esm_row['received_date'] # Corrected from pisa_row to esm_row
 
         elif channel == 'PM7' and not df_pm7_indexed.empty and barcode in df_pm7_indexed.index:
             pm7_row = df_pm7_indexed.loc[barcode]
-            if 'vendor_name' in pm7_row.index and pd.notna(pm7_row['vendor_name']) and not new_row_data.get('Vendor Name'):
-                new_row_data['Vendor Name'] = pm7_row['vendor_name']
-            if 'vendor_number' in pm7_row.index and pd.notna(pm7_row['vendor_number']) and not new_row_data.get('Vendor number'):
-                new_row_data['Vendor number'] = pm7_row['vendor_number']
-            if 'company_code' in pm7_row.index and pd.notna(pm7_row['company_code']) and not new_row_data.get('Company code'):
-                new_row_data['Company code'] = pm7_row['company_code']
-            if 'received_date' in pm7_row.index and pd.notna(pm7_row['received_date']) and not new_row_data.get('Received Date'):
-                new_row_data['Received Date'] = pm7_row['received_date']
+            if 'vendor_name' in pm7_row.index and pd.notna(pm7_row['vendor_name']) and not new_central_row_data.get('Vendor Name'):
+                new_central_row_data['Vendor Name'] = pm7_row['vendor_name']
+            if 'vendor_number' in pm7_row.index and pd.notna(pm7_row['vendor_number']) and not new_central_row_data.get('Vendor number'):
+                new_central_row_data['Vendor number'] = pm7_row['vendor_number']
+            if 'company_code' in pm7_row.index and pd.notna(pm7_row['company_code']) and not new_central_row_data.get('Company code'):
+                new_central_row_data['Company code'] = pm7_row['company_code']
+            if 'received_date' in pm7_row.index and pd.notna(pm7_row['received_date']) and not new_central_row_data.get('Received Date'):
+                new_central_row_data['Received Date'] = pm7_row['received_date']
 
         # Set or override specific values for new records
-        new_row_data['Status'] = 'New' # Corrected variable name
-        new_row_data['Allocation Date'] = today_date_formatted # Corrected variable name
+        new_central_row_data['Status'] = 'New'
+        new_central_row_data['Allocation Date'] = today_date_formatted # Only for new records
 
-        all_new_central_rows_data.append(new_row_data)
+        all_new_central_rows_data.append(new_central_row_data)
 
     if all_new_central_rows_data:
         df_new_central_rows = pd.DataFrame(all_new_central_rows_data)
@@ -624,6 +624,7 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
         'Company code': find_column_robust(df_workon_rgba_raw, 'company code'),
         'Received Date': find_column_robust(df_workon_rgba_raw, 'Updated'),
         'Remarks': find_column_robust(df_workon_rgba_raw, 'summary'),
+        # These are currently blank in your request - will remain blank unless specified
         'Category': None,
         'Vendor number': None,
         'Vendor Name': None,
@@ -674,7 +675,7 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
     # --- Apply Region Mapping to RGBA data ---
     if region_map and 'Company code' in df_mapped_workon_rgba.columns:
         df_mapped_workon_rgba['Company code'] = df_mapped_workon_rgba['Company code'].astype(str).str.strip().str.upper().str[:4]
-        df_mapped_workon_rgba['Region'] = df_mapped_workon_rgba['Company code'].map(global_region_map).fillna(df_mapped_workon_rgba['Region'])
+        df_mapped_workon_rgba['Region'] = df_mapped_workon_rgba['Company code'].map(region_map).fillna(df_mapped_workon_rgba['Region'])
         df_mapped_workon_rgba['Region'] = df_mapped_workon_rgba['Region'].fillna('')
         logger.info(f"Region mapping applied to {len(df_mapped_workon_rgba)} Workon RGBA records.")
     else:
@@ -689,35 +690,31 @@ def map_smd_columns(df_smd_raw):
     """
     Maps columns from the raw SMD DataFrame to the CONSOLIDATED_OUTPUT_COLUMNS format.
     Handles robust column finding and hardcoded values.
-    Includes conditional logic for Category/Vendor Name based on Vendor Number.
     """
     logger.info("\n--- Starting SMD Data Mapping ---")
     if df_smd_raw.empty:
         logger.info("SMD DataFrame is empty. Skipping mapping.")
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
 
-    # Make a copy and clean column names for internal processing
-    df_smd_cleaned = clean_column_names(df_smd_raw.copy())
+    df_smd = clean_column_names(df_smd_raw.copy())
     today_date = datetime.now()
     today_date_formatted = today_date.strftime("%m/%d/%Y")
 
     mapped_rows = []
 
-    # Robustly find raw column names from the original df_smd_raw
-    ekorg_col_raw = find_column_robust(df_smd_raw, 'Ekorg')
-    material_field_col_raw = find_column_robust(df_smd_raw, 'Material Field')
-    pmd_sno_col_raw = find_column_robust(df_smd_raw, 'PMD-SNO')
-    supplier_name_col_raw = find_column_robust(df_smd_raw, 'supplier name')
-    request_date_col_raw = find_column_robust(df_smd_raw, 'Request Date')
-    requested_by_col_raw = find_column_robust(df_smd_raw, 'Requested by')
+    smd_column_map = {
+        'Company code': find_column_robust(df_smd_raw, 'Ekorg'),
+        'Region': find_column_robust(df_smd_raw, 'Material Field'),
+        'Vendor number': find_column_robust(df_smd_raw, 'PMD-SNO'),
+        'Vendor Name': find_column_robust(df_smd_raw, 'supplier name'),
+        'Received Date': find_column_robust(df_smd_raw, 'Request Date'),
+        'Requester': find_column_robust(df_smd_raw, 'Requested by'),
+        # Barcode is not mapped, so it will remain blank unless defined here
+        # Processor, Category, Status, Re-Open Date, Clarification Date, Completion Date, Remarks, Aging
+        # will be blank by default initialization
+    }
 
-    # Ensure critical columns for conditional logic are found
-    if not pmd_sno_col_raw or not supplier_name_col_raw:
-        logger.error("Critical SMD columns 'PMD-SNO' or 'supplier name' not found. Cannot apply conditional logic for Category/Vendor Name.")
-        return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
-
-
-    for index, row in df_smd_cleaned.iterrows(): # Iterate over the cleaned df
+    for index, row in df_smd.iterrows():
         new_row_data = {col: '' for col in CONSOLIDATED_OUTPUT_COLUMNS} # Initialize all with blank
 
         # Hardcoded values
@@ -725,37 +722,17 @@ def map_smd_columns(df_smd_raw):
         new_row_data['Allocation Date'] = today_date_formatted
         new_row_data['Today'] = today_date_formatted
 
-        # Mapped values - Use cleaned column names from the 'row' object
-        mapped_company_code = str(row.get(clean_col_name_str(ekorg_col_raw), ''))
-        mapped_region = str(row.get(clean_col_name_str(material_field_col_raw), ''))
-        
-        # Get PMD-SNO and supplier name for conditional logic
-        mapped_pmd_sno = str(row.get(clean_col_name_str(pmd_sno_col_raw), '')).strip()
-        mapped_supplier_name = str(row.get(clean_col_name_str(supplier_name_col_raw), '')).strip()
+        # Mapped values
+        # Use clean_col_name_str on the robustly found raw column name
+        new_row_data['Company code'] = str(row.get(clean_col_name_str(smd_column_map['Company code']), '')) if smd_column_map['Company code'] else ''
+        new_row_data['Region'] = str(row.get(clean_col_name_str(smd_column_map['Region']), '')) if smd_column_map['Region'] else ''
+        new_row_data['Vendor number'] = str(row.get(clean_col_name_str(smd_column_map['Vendor number']), '')) if smd_column_map['Vendor number'] else ''
+        new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(smd_column_map['Vendor Name']), '')) if smd_column_map['Vendor Name'] else ''
+        new_row_data['Requester'] = str(row.get(clean_col_name_str(smd_column_map['Requester']), '')) if smd_column_map['Requester'] else ''
 
-        # Received Date logic
-        received_date_val = row.get(clean_col_name_str(request_date_col_raw)) if request_date_col_raw else None
-        mapped_received_date = format_date_to_mdyyyy(pd.Series([received_date_val])).iloc[0] if received_date_val is not None else ''
-
-        mapped_requester = str(row.get(clean_col_name_str(requested_by_col_raw), ''))
-
-        # --- New Conditional Logic for Vendor Name / Category ---
-        # Check if mapped_pmd_sno is purely numeric (after stripping whitespace)
-        is_pmd_sno_numeric = mapped_pmd_sno.isdigit()
-
-        if is_pmd_sno_numeric:
-            new_row_data['Category'] = mapped_supplier_name # Supplier Name goes to Category
-            new_row_data['Vendor Name'] = '' # Vendor Name is left blank
-        else:
-            new_row_data['Vendor Name'] = mapped_supplier_name # Supplier Name goes to Vendor Name
-            new_row_data['Category'] = '' # Category is left blank
-        # --- End New Conditional Logic ---
-
-        new_row_data['Company code'] = mapped_company_code
-        new_row_data['Region'] = mapped_region
-        new_row_data['Vendor number'] = mapped_pmd_sno
-        new_row_data['Received Date'] = mapped_received_date
-        new_row_data['Requester'] = mapped_requester
+        # Date columns - format immediately after retrieval
+        received_date_val = row.get(clean_col_name_str(smd_column_map['Received Date'])) if smd_column_map['Received Date'] else None
+        new_row_data['Received Date'] = format_date_to_mdyyyy(pd.Series([received_date_val])).iloc[0] if received_date_val is not None else ''
 
         mapped_rows.append(new_row_data)
 
@@ -1205,12 +1182,15 @@ def process_pmd_lookup():
         df_pmd_central_raw = pd.read_excel(central_path)
 
         # Call the updated function that returns three items: success status, df_sheet1, df_sheet2
-        success, df_sheet1, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
+        success, result_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
 
         if not success:
-            flash(f'PMD Lookup failed: {df_sheet1}', 'error') # df_sheet1 contains error message on failure
-            logger.error(f"PMD Lookup process failed: {df_sheet1}")
+            flash(f'PMD Lookup failed: {result_or_error_msg}', 'error') # df_sheet1 contains error message on failure
+            logger.error(f"PMD Lookup process failed: {result_or_error_msg}")
             return redirect(url_for('index'))
+
+        # If successful, result_or_error_msg is actually df_sheet1
+        df_sheet1 = result_or_error_msg
 
         today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         pmd_output_filename = f'PMD_Lookup_ResultFile_{today_str}.xlsx'
