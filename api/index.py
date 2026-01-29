@@ -65,7 +65,7 @@ def format_date_to_pmddump(date_series):
     """
     datetime_series = pd.to_datetime(date_series, errors='coerce')
     formatted_series = datetime_series.apply(
-        lambda x: x.strftime('%Y-%m-%d %I:%M %p') if pd.notna(x) else '' # Changed %H to %I for 12-hour format with AM/PM
+        lambda x: x.strftime('%Y-%m-%d %H:%M %p') if pd.notna(x) else ''
     )
     return formatted_series
 
@@ -359,7 +359,7 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
         channel = row_consolidated['Channel']
 
         # Get existing values from consolidated row as base
-        new_central_row_data = row_consolidated.to_dict() # Correctly initialized here
+        new_central_row_data = row_consolidated.to_dict()
 
         # Update specific fields if they are blank and a lookup is possible
         if channel == 'PISA' and not df_pisa_indexed.empty and barcode in df_pisa_indexed.index:
@@ -399,7 +399,7 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
 
         # Set or override specific values for new records
         new_central_row_data['Status'] = 'New'
-        new_central_row_data['Allocation Date'] = today_date_formatted
+        new_central_row_data['Allocation Date'] = today_date_formatted # Only for new records
 
         all_new_central_rows_data.append(new_central_row_data)
 
@@ -624,6 +624,7 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
         'Company code': find_column_robust(df_workon_rgba_raw, 'company code'),
         'Received Date': find_column_robust(df_workon_rgba_raw, 'Updated'),
         'Remarks': find_column_robust(df_workon_rgba_raw, 'summary'),
+        # These are currently blank in your request - will remain blank unless specified
         'Category': None,
         'Vendor number': None,
         'Vendor Name': None,
@@ -689,35 +690,31 @@ def map_smd_columns(df_smd_raw):
     """
     Maps columns from the raw SMD DataFrame to the CONSOLIDATED_OUTPUT_COLUMNS format.
     Handles robust column finding and hardcoded values.
-    Includes conditional logic for Category/Vendor Name based on Vendor Number.
     """
     logger.info("\n--- Starting SMD Data Mapping ---")
     if df_smd_raw.empty:
         logger.info("SMD DataFrame is empty. Skipping mapping.")
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
 
-    # Make a copy and clean column names for internal processing
-    df_smd_cleaned = clean_column_names(df_smd_raw.copy())
+    df_smd = clean_column_names(df_smd_raw.copy())
     today_date = datetime.now()
     today_date_formatted = today_date.strftime("%m/%d/%Y")
 
     mapped_rows = []
 
-    # Robustly find raw column names from the original df_smd_raw
-    ekorg_col_raw = find_column_robust(df_smd_raw, 'Ekorg')
-    material_field_col_raw = find_column_robust(df_smd_raw, 'Material Field')
-    pmd_sno_col_raw = find_column_robust(df_smd_raw, 'PMD-SNO')
-    supplier_name_col_raw = find_column_robust(df_smd_raw, 'supplier name')
-    request_date_col_raw = find_column_robust(df_smd_raw, 'Request Date')
-    requested_by_col_raw = find_column_robust(df_smd_raw, 'Requested by')
+    smd_column_map = {
+        'Company code': find_column_robust(df_smd_raw, 'Ekorg'),
+        'Region': find_column_robust(df_smd_raw, 'Material Field'),
+        'Vendor number': find_column_robust(df_smd_raw, 'PMD-SNO'),
+        'Vendor Name': find_column_robust(df_smd_raw, 'supplier name'),
+        'Received Date': find_column_robust(df_smd_raw, 'Request Date'),
+        'Requester': find_column_robust(df_smd_raw, 'Requested by'),
+        # Barcode is not mapped, so it will remain blank unless defined here
+        # Processor, Category, Status, Re-Open Date, Clarification Date, Completion Date, Remarks, Aging
+        # will be blank by default initialization
+    }
 
-    # Ensure critical columns for conditional logic are found
-    if not pmd_sno_col_raw or not supplier_name_col_raw:
-        logger.error("Critical SMD columns 'PMD-SNO' or 'supplier name' not found. Cannot apply conditional logic for Category/Vendor Name.")
-        return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
-
-
-    for index, row in df_smd_cleaned.iterrows(): # Iterate over the cleaned df
+    for index, row in df_smd.iterrows():
         new_row_data = {col: '' for col in CONSOLIDATED_OUTPUT_COLUMNS} # Initialize all with blank
 
         # Hardcoded values
@@ -725,38 +722,17 @@ def map_smd_columns(df_smd_raw):
         new_row_data['Allocation Date'] = today_date_formatted
         new_row_data['Today'] = today_date_formatted
 
-        # Mapped values - Use cleaned column names from the 'row' object
-        new_row_data['Company code'] = str(row.get(clean_col_name_str(ekorg_col_raw), ''))
-        new_row_data['Region'] = str(row.get(clean_col_name_str(material_field_col_raw), ''))
-        
-        # Get PMD-SNO and supplier name for conditional logic
-        # Ensure that non-string values are converted to string before .strip() and .isdigit()
-        mapped_pmd_sno = str(row.get(clean_col_name_str(pmd_sno_col_raw), '')).strip()
-        mapped_supplier_name = str(row.get(clean_col_name_str(supplier_name_col_raw), '')).strip()
+        # Mapped values
+        # Use clean_col_name_str on the robustly found raw column name
+        new_row_data['Company code'] = str(row.get(clean_col_name_str(smd_column_map['Company code']), '')) if smd_column_map['Company code'] else ''
+        new_row_data['Region'] = str(row.get(clean_col_name_str(smd_column_map['Region']), '')) if smd_column_map['Region'] else ''
+        new_row_data['Vendor number'] = str(row.get(clean_col_name_str(smd_column_map['Vendor number']), '')) if smd_column_map['Vendor number'] else ''
+        new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(smd_column_map['Vendor Name']), '')) if smd_column_map['Vendor Name'] else ''
+        new_row_data['Requester'] = str(row.get(clean_col_name_str(smd_column_map['Requester']), '')) if smd_column_map['Requester'] else ''
 
-        # Received Date logic
-        received_date_val = row.get(clean_col_name_str(request_date_col_raw)) if request_date_col_raw else None
-        mapped_received_date = format_date_to_mdyyyy(pd.Series([received_date_val])).iloc[0] if received_date_val is not None else ''
-
-        mapped_requester = str(row.get(clean_col_name_str(requested_by_col_raw), ''))
-
-        # --- New Conditional Logic for Vendor Name / Category ---
-        # Check if mapped_pmd_sno is purely numeric (after stripping whitespace)
-        is_pmd_sno_numeric = mapped_pmd_sno.isdigit()
-
-        if is_pmd_sno_numeric:
-            new_row_data['Category'] = mapped_supplier_name # Supplier Name goes to Category
-            new_row_data['Vendor Name'] = '' # Vendor Name is left blank
-        else:
-            new_row_data['Vendor Name'] = mapped_supplier_name # Supplier Name goes to Vendor Name
-            new_row_data['Category'] = '' # Category is left blank
-        # --- End New Conditional Logic ---
-
-        new_row_data['Company code'] = mapped_company_code
-        new_row_data['Region'] = mapped_region
-        new_row_data['Vendor number'] = mapped_pmd_sno
-        new_row_data['Received Date'] = mapped_received_date
-        new_row_data['Requester'] = mapped_requester
+        # Date columns - format immediately after retrieval
+        received_date_val = row.get(clean_col_name_str(smd_column_map['Received Date'])) if smd_column_map['Received Date'] else None
+        new_row_data['Received Date'] = format_date_to_mdyyyy(pd.Series([received_date_val])).iloc[0] if received_date_val is not None else ''
 
         mapped_rows.append(new_row_data)
 
@@ -903,7 +879,7 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
         new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(supplier_name_col_raw), ''))
         new_row_data['Requester'] = str(row.get(clean_col_name_str(requested_by_col_raw), ''))
 
-        # --- Received Date logic - directly map from Valid From, and format with format_date_to_pmddump ---
+        # --- CORRECTED: Received Date logic - directly map from Valid From, and format with format_date_to_pmddump ---
         valid_from_val_for_sheet2 = row.get(clean_col_name_str(valid_from_col_raw_for_sheet2)) if valid_from_col_raw_for_sheet2 else None
         
         # Apply the specific PMD dump date format for "Received Date" in Sheet 2
@@ -1115,21 +1091,21 @@ def process_files():
         # --- FINAL AGING CALCULATION ---
         logger.info("\n--- Calculating Aging for blank entries ---")
         # Convert date columns to datetime objects for calculation, coercing errors to NaT
-        df_ultimate_final_central['Today_dt'] = pd.to_datetime(df_ultimate_final_central['Today'], format='%m/%d/%Y', errors='coerce')
+        df_ultimate_final_central['Received Date_dt'] = pd.to_datetime(df_ultimate_final_central['Received Date'], format='%m/%d/%Y', errors='coerce')
         df_ultimate_final_central['Allocation Date_dt'] = pd.to_datetime(df_ultimate_final_central['Allocation Date'], format='%m/%d/%Y', errors='coerce')
 
-        # Identify rows where 'Aging' is blank/empty and both dates are valid for calculation
+        # Identify rows where 'Aging' is blank/empty and both dates are valid
         aging_mask = (df_ultimate_final_central['Aging'].fillna('').astype(str).str.strip() == '') & \
-                     (df_ultimate_final_central['Today_dt'].notna()) & \
+                     (df_ultimate_final_central['Received Date_dt'].notna()) & \
                      (df_ultimate_final_central['Allocation Date_dt'].notna())
 
-        # Calculate aging as (Today - Allocation Date) and convert to integer days
+        # Calculate aging and convert to integer days
         df_ultimate_final_central.loc[aging_mask, 'Aging'] = \
-            (df_ultimate_final_central.loc[aging_mask, 'Today_dt'] - \
-             df_ultimate_final_central.loc[aging_mask, 'Allocation Date_dt']).dt.days.astype(str)
+            (df_ultimate_final_central.loc[aging_mask, 'Allocation Date_dt'] - \
+             df_ultimate_final_central.loc[aging_mask, 'Received Date_dt']).dt.days.astype(str)
 
         # Clean up temporary date columns
-        df_ultimate_final_central = df_ultimate_final_central.drop(columns=['Today_dt', 'Allocation Date_dt'])
+        df_ultimate_final_central = df_ultimate_final_central.drop(columns=['Received Date_dt', 'Allocation Date_dt'])
         logger.info(f"Calculated Aging for {aging_mask.sum()} entries.")
         # --- END FINAL AGING CALCULATION ---
 
@@ -1148,12 +1124,10 @@ def process_files():
             return redirect(url_for('index'))
 
         session['central_output_path'] = final_central_output_file_path
-        # Store the full URL in session for easier retrieval on page refresh
-        session['central_download_url'] = url_for('download_file', filename=os.path.basename(final_central_output_file_path))
-
 
         return render_template('index.html',
-                                central_download_link=session.get('central_download_url'))
+                                central_download_link=url_for('download_file', filename=os.path.basename(final_central_output_file_path))
+                              )
 
     except Exception as e:
         flash(f'An unhandled error occurred during processing: {e}', 'error')
@@ -1208,15 +1182,15 @@ def process_pmd_lookup():
         df_pmd_central_raw = pd.read_excel(central_path)
 
         # Call the updated function that returns three items: success status, df_sheet1, df_sheet2
-        success, df_sheet1_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
+        success, result_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
 
         if not success:
-            flash(f'PMD Lookup failed: {df_sheet1_or_error_msg}', 'error') # df_sheet1 contains error message on failure
-            logger.error(f"PMD Lookup process failed: {df_sheet1_or_error_msg}")
+            flash(f'PMD Lookup failed: {result_or_error_msg}', 'error') # df_sheet1 contains error message on failure
+            logger.error(f"PMD Lookup process failed: {result_or_error_msg}")
             return redirect(url_for('index'))
 
-        # If successful, df_sheet1_or_error_msg is actually df_sheet1
-        df_sheet1 = df_sheet1_or_error_msg
+        # If successful, result_or_error_msg is actually df_sheet1
+        df_sheet1 = result_or_error_msg
 
         today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         pmd_output_filename = f'PMD_Lookup_ResultFile_{today_str}.xlsx'
@@ -1237,11 +1211,9 @@ def process_pmd_lookup():
             return redirect(url_for('index'))
 
         session['pmd_output_path'] = pmd_output_file_path
-        # Store the full URL in session for easier retrieval on page refresh
-        session['pmd_download_url'] = url_for('download_pmd_file', filename=os.path.basename(pmd_output_file_path))
-
+        flash('PMD Lookup process completed successfully, file contains two sheets!', 'success')
         return render_template('index.html',
-                               pmd_download_link=session.get('pmd_download_url'))
+                               pmd_download_link=url_for('download_pmd_file', filename=os.path.basename(pmd_output_file_path)))
 
     except Exception as e:
         flash(f'An unhandled error occurred during PMD Lookup: {e}', 'error')
@@ -1260,9 +1232,8 @@ def download_file(filename):
 
     logger.info(f"Download requested for consolidated file: {filename}")
 
-    # --- IMPORTANT: Check for temp_dir existence AND if it matches the current file ---
-    if not temp_dir or not os.path.exists(temp_dir):
-        logger.warning("Consolidated temp_dir not found or already deleted from session.")
+    if not temp_dir:
+        logger.warning("Consolidated temp_dir not found in session.")
         flash('File not found for download or session expired. Please re-run the process.', 'error')
         return redirect(url_for('index'))
 
@@ -1273,9 +1244,6 @@ def download_file(filename):
         logger.info(f"Matched consolidated central file. Reconstructed path: {file_path_in_temp}")
     else:
         logger.warning(f"Filename '{filename}' did not match the final central output file in session.")
-        flash('File mismatch for download. Please re-run the process.', 'error')
-        return redirect(url_for('index'))
-
 
     if file_path_in_temp and os.path.exists(file_path_in_temp):
         logger.info(f"File '{file_path_in_temp}' exists. Attempting to send.")
@@ -1291,19 +1259,6 @@ def download_file(filename):
             logger.error(f"Exception while sending consolidated file '{file_path_in_temp}': {e}")
             flash(f'Error providing download: {e}. Please try again.', 'error')
             return redirect(url_for('index'))
-        finally:
-            # --- Cleanup after successful send ---
-            if os.path.exists(temp_dir):
-                try:
-                    shutil.rmtree(temp_dir)
-                    logger.info(f"Cleaned up consolidated temporary directory after download: {temp_dir}")
-                except OSError as e:
-                    logger.error(f"Error removing consolidated temporary directory {temp_dir} after download: {e}")
-            session.pop('temp_dir_consolidated', None)
-            session.pop('central_output_path', None)
-            session.pop('central_download_url', None) # Clear the URL from session too
-            session.pop('region_map', None) # Region map is associated with this run
-            # --- END Cleanup ---
     else:
         logger.warning(f"File '{filename}' not found for download or session data missing/expired. Full path attempted: {file_path_in_temp}")
         flash('File not found for download or session expired. Please re-run the process.', 'error')
@@ -1317,9 +1272,8 @@ def download_pmd_file(filename):
 
     logger.info(f"Download requested for PMD lookup file: {filename}")
 
-    # --- IMPORTANT: Check for temp_dir existence AND if it matches the current file ---
-    if not temp_dir or not os.path.exists(temp_dir):
-        logger.warning("PMD temp_dir not found or already deleted from session.")
+    if not temp_dir:
+        logger.warning("PMD temp_dir not found in session.")
         flash('PMD result file not found for download or session expired. Please re-run the PMD Lookup process.', 'error')
         return redirect(url_for('index'))
 
@@ -1330,8 +1284,6 @@ def download_pmd_file(filename):
         logger.info(f"Matched PMD lookup result file. Reconstructed path: {file_path_in_temp}")
     else:
         logger.warning(f"Filename '{filename}' did not match the PMD lookup output file in session.")
-        flash('File mismatch for PMD download. Please re-run the process.', 'error')
-        return redirect(url_for('index'))
 
     if file_path_in_temp and os.path.exists(file_path_in_temp):
         logger.info(f"File '{file_path_in_temp}' exists. Attempting to send.")
@@ -1347,18 +1299,6 @@ def download_pmd_file(filename):
             logger.error(f"Exception while sending PMD lookup file '{file_path_in_temp}': {e}")
             flash(f'Error providing PMD download: {e}. Please try again.', 'error')
             return redirect(url_for('index'))
-        finally:
-            # --- Cleanup after successful send ---
-            if os.path.exists(temp_dir):
-                try:
-                    shutil.rmtree(temp_dir)
-                    logger.info(f"Cleaned up PMD temporary directory after download: {temp_dir}")
-                except OSError as e:
-                    logger.error(f"Error removing PMD temporary directory {temp_dir} after download: {e}")
-            session.pop('temp_dir_pmd', None)
-            session.pop('pmd_output_path', None)
-            session.pop('pmd_download_url', None) # Clear the URL from session too
-            # --- END Cleanup ---
     else:
         logger.warning(f"File '{filename}' not found for download or session data missing/expired. Full path attempted: {file_path_in_temp}")
         flash('PMD result file not found for download or session expired. Please re-run the PMD Lookup process.', 'error')
@@ -1378,7 +1318,6 @@ def cleanup_session():
             flash(f'Error cleaning up consolidated temporary files: {e}', 'error')
     session.pop('temp_dir_consolidated', None)
     session.pop('central_output_path', None)
-    session.pop('central_download_url', None)
     session.pop('region_map', None)
 
     # Cleanup for PMD lookup process
@@ -1393,7 +1332,6 @@ def cleanup_session():
             flash(f'Error cleaning up PMD temporary files: {e}', 'error')
     session.pop('temp_dir_pmd', None)
     session.pop('pmd_output_path', None)
-    session.pop('pmd_download_url', None)
     
     return redirect(url_for('index'))
 
