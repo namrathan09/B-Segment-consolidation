@@ -286,6 +286,7 @@ text-decoration: underline;
 <button type="submit">Process Consolidated Files</button>
 </form>
 
+{# Display download link only if available in session #}
 {% if central_download_link %}
 <div class="download-links">
 <h2>Consolidated Processing Complete!</h2>
@@ -308,6 +309,7 @@ text-decoration: underline;
 <button type="submit">Process PMD Lookup</button>
 </form>
 
+{# Display PMD download link only if available in session #}
 {% if pmd_download_link %}
 <div class="download-links">
 <h2>PMD Lookup Complete!</h2>
@@ -315,6 +317,16 @@ text-decoration: underline;
 <a href="{{ pmd_download_link }}" download>Download PMD Lookup Result File</a>
 </div>
 {% endif %}
+
+{# New section for Cleanup Button #}
+<div class="cleanup-section" style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+    <h2>Cleanup Temporary Files</h2>
+    <p>Click this button after you have downloaded all necessary files to free up server resources.</p>
+    <form action="/cleanup_session" method="post">
+        <button type="submit" style="background-color: #dc3545;">Clean Up Downloads</button>
+    </form>
+</div>
+
 
 </div>
 
