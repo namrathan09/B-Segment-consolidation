@@ -65,7 +65,7 @@ def format_date_to_pmddump(date_series):
     """
     datetime_series = pd.to_datetime(date_series, errors='coerce')
     formatted_series = datetime_series.apply(
-        lambda x: x.strftime('%Y-%m-%d %H:%M %p') if pd.notna(x) else ''
+        lambda x: x.strftime('%Y-%m-%d %I:%M %p') if pd.notna(x) else '' # Changed %H to %I for 12-hour format with AM/PM
     )
     return formatted_series
 
@@ -401,7 +401,7 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
         new_central_row_data['Status'] = 'New'
         new_central_row_data['Allocation Date'] = today_date_formatted # Only for new records
 
-        all_new_central_rows_data.append(new_central_row_data)
+        all_new_central_rows_data.append(new_row_data)
 
     if all_new_central_rows_data:
         df_new_central_rows = pd.DataFrame(all_new_central_rows_data)
@@ -624,7 +624,6 @@ def map_workon_rgba_columns(df_workon_rgba_raw, region_map):
         'Company code': find_column_robust(df_workon_rgba_raw, 'company code'),
         'Received Date': find_column_robust(df_workon_rgba_raw, 'Updated'),
         'Remarks': find_column_robust(df_workon_rgba_raw, 'summary'),
-        # These are currently blank in your request - will remain blank unless specified
         'Category': None,
         'Vendor number': None,
         'Vendor Name': None,
@@ -690,31 +689,35 @@ def map_smd_columns(df_smd_raw):
     """
     Maps columns from the raw SMD DataFrame to the CONSOLIDATED_OUTPUT_COLUMNS format.
     Handles robust column finding and hardcoded values.
+    Includes conditional logic for Category/Vendor Name based on Vendor Number.
     """
     logger.info("\n--- Starting SMD Data Mapping ---")
     if df_smd_raw.empty:
         logger.info("SMD DataFrame is empty. Skipping mapping.")
         return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
 
-    df_smd = clean_column_names(df_smd_raw.copy())
+    # Make a copy and clean column names for internal processing
+    df_smd_cleaned = clean_column_names(df_smd_raw.copy())
     today_date = datetime.now()
     today_date_formatted = today_date.strftime("%m/%d/%Y")
 
     mapped_rows = []
 
-    smd_column_map = {
-        'Company code': find_column_robust(df_smd_raw, 'Ekorg'),
-        'Region': find_column_robust(df_smd_raw, 'Material Field'),
-        'Vendor number': find_column_robust(df_smd_raw, 'PMD-SNO'),
-        'Vendor Name': find_column_robust(df_smd_raw, 'supplier name'),
-        'Received Date': find_column_robust(df_smd_raw, 'Request Date'),
-        'Requester': find_column_robust(df_smd_raw, 'Requested by'),
-        # Barcode is not mapped, so it will remain blank unless defined here
-        # Processor, Category, Status, Re-Open Date, Clarification Date, Completion Date, Remarks, Aging
-        # will be blank by default initialization
-    }
+    # Robustly find raw column names from the original df_smd_raw
+    ekorg_col_raw = find_column_robust(df_smd_raw, 'Ekorg')
+    material_field_col_raw = find_column_robust(df_smd_raw, 'Material Field')
+    pmd_sno_col_raw = find_column_robust(df_smd_raw, 'PMD-SNO')
+    supplier_name_col_raw = find_column_robust(df_smd_raw, 'supplier name')
+    request_date_col_raw = find_column_robust(df_smd_raw, 'Request Date')
+    requested_by_col_raw = find_column_robust(df_smd_raw, 'Requested by')
 
-    for index, row in df_smd.iterrows():
+    # Ensure critical columns for conditional logic are found
+    if not pmd_sno_col_raw or not supplier_name_col_raw:
+        logger.error("Critical SMD columns 'PMD-SNO' or 'supplier name' not found. Cannot apply conditional logic for Category/Vendor Name.")
+        return pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
+
+
+    for index, row in df_smd_cleaned.iterrows(): # Iterate over the cleaned df
         new_row_data = {col: '' for col in CONSOLIDATED_OUTPUT_COLUMNS} # Initialize all with blank
 
         # Hardcoded values
@@ -722,17 +725,37 @@ def map_smd_columns(df_smd_raw):
         new_row_data['Allocation Date'] = today_date_formatted
         new_row_data['Today'] = today_date_formatted
 
-        # Mapped values
-        # Use clean_col_name_str on the robustly found raw column name
-        new_row_data['Company code'] = str(row.get(clean_col_name_str(smd_column_map['Company code']), '')) if smd_column_map['Company code'] else ''
-        new_row_data['Region'] = str(row.get(clean_col_name_str(smd_column_map['Region']), '')) if smd_column_map['Region'] else ''
-        new_row_data['Vendor number'] = str(row.get(clean_col_name_str(smd_column_map['Vendor number']), '')) if smd_column_map['Vendor number'] else ''
-        new_row_data['Vendor Name'] = str(row.get(clean_col_name_str(smd_column_map['Vendor Name']), '')) if smd_column_map['Vendor Name'] else ''
-        new_row_data['Requester'] = str(row.get(clean_col_name_str(smd_column_map['Requester']), '')) if smd_column_map['Requester'] else ''
+        # Mapped values - Use cleaned column names from the 'row' object
+        mapped_company_code = str(row.get(clean_col_name_str(ekorg_col_raw), ''))
+        mapped_region = str(row.get(clean_col_name_str(material_field_col_raw), ''))
+        
+        # Get PMD-SNO and supplier name for conditional logic
+        mapped_pmd_sno = str(row.get(clean_col_name_str(pmd_sno_col_raw), '')).strip()
+        mapped_supplier_name = str(row.get(clean_col_name_str(supplier_name_col_raw), '')).strip()
 
-        # Date columns - format immediately after retrieval
-        received_date_val = row.get(clean_col_name_str(smd_column_map['Received Date'])) if smd_column_map['Received Date'] else None
-        new_row_data['Received Date'] = format_date_to_mdyyyy(pd.Series([received_date_val])).iloc[0] if received_date_val is not None else ''
+        # Received Date logic
+        received_date_val = row.get(clean_col_name_str(request_date_col_raw)) if request_date_col_raw else None
+        mapped_received_date = format_date_to_mdyyyy(pd.Series([received_date_val])).iloc[0] if received_date_val is not None else ''
+
+        mapped_requester = str(row.get(clean_col_name_str(requested_by_col_raw), ''))
+
+        # --- New Conditional Logic for Vendor Name / Category ---
+        # Check if mapped_pmd_sno is purely numeric (after stripping whitespace)
+        is_pmd_sno_numeric = mapped_pmd_sno.isdigit()
+
+        if is_pmd_sno_numeric:
+            new_row_data['Category'] = mapped_supplier_name # Supplier Name goes to Category
+            new_row_data['Vendor Name'] = '' # Vendor Name is left blank
+        else:
+            new_row_data['Vendor Name'] = mapped_supplier_name # Supplier Name goes to Vendor Name
+            new_row_data['Category'] = '' # Category is left blank
+        # --- End New Conditional Logic ---
+
+        new_row_data['Company code'] = mapped_company_code
+        new_row_data['Region'] = mapped_region
+        new_row_data['Vendor number'] = mapped_pmd_sno
+        new_row_data['Received Date'] = mapped_received_date
+        new_row_data['Requester'] = mapped_requester
 
         mapped_rows.append(new_row_data)
 
@@ -1182,15 +1205,15 @@ def process_pmd_lookup():
         df_pmd_central_raw = pd.read_excel(central_path)
 
         # Call the updated function that returns three items: success status, df_sheet1, df_sheet2
-        success, result_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
+        success, df_sheet1_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
 
         if not success:
-            flash(f'PMD Lookup failed: {result_or_error_msg}', 'error') # df_sheet1 contains error message on failure
-            logger.error(f"PMD Lookup process failed: {result_or_error_msg}")
+            flash(f'PMD Lookup failed: {df_sheet1_or_error_msg}', 'error') # df_sheet1 contains error message on failure
+            logger.error(f"PMD Lookup process failed: {df_sheet1_or_error_msg}")
             return redirect(url_for('index'))
 
-        # If successful, result_or_error_msg is actually df_sheet1
-        df_sheet1 = result_or_error_msg
+        # If successful, df_sheet1_or_error_msg is actually df_sheet1
+        df_sheet1 = df_sheet1_or_error_msg
 
         today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         pmd_output_filename = f'PMD_Lookup_ResultFile_{today_str}.xlsx'
