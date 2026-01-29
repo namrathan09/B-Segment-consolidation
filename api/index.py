@@ -8,7 +8,8 @@ import re
 from flask import Flask, request, render_template, redirect, url_for, send_file, flash, session
 from werkzeug.utils import secure_filename
 import logging
-from io import BytesIO # Import BytesIO for in-memory file handling
+from io import BytesIO
+import base64 # Import base64
 
 warnings.filterwarnings('ignore')
 
@@ -20,6 +21,8 @@ static_dir = os.path.join(BASE_DIR, '..', 'static')
 # Initialize Flask app
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 
+# IMPORTANT: Ensure FLASK_SECRET_KEY is set in your Vercel project environment variables
+# A strong, random key is crucial for session security.
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key_for_local_dev_only')
 
 # --- Global Variables ---
@@ -905,20 +908,19 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
 @app.route('/', methods=['GET'])
 def index():
     # Clear any previous download links when returning to index
-    # We store file content in session for download
+    # Download links will only appear if the session has output_data and output_filename
     return render_template('index.html')
 
 @app.route('/process', methods=['POST'])
 def process_files():
-    # Use BytesIO for in-memory handling for Vercel
-    consolidated_output_buffer = BytesIO()
+    consolidated_output_buffer = BytesIO() # Create a BytesIO object for the final output
     
     # Clear relevant session data for a fresh start for this process
     session.pop('central_output_data', None) # Store data directly, not path
+    session.pop('central_output_filename', None)
     session.pop('region_map', None)
     
-    # Note: temp_dir will still be used for intermediate file uploads, but not for the final output storage.
-    temp_dir_for_uploads = tempfile.mkdtemp(dir='/tmp')
+    temp_dir_for_uploads = tempfile.mkdtemp(dir='/tmp') # Temp dir for current request's uploads
 
     REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')
 
@@ -1106,7 +1108,6 @@ def process_files():
 
         # Final output saving to BytesIO
         final_central_output_filename = f'CentralFile_FinalOutput_{today_str}.xlsx'
-        consolidated_output_buffer.seek(0) # Ensure buffer is at the start
         try:
             df_ultimate_final_central.to_excel(consolidated_output_buffer, index=False)
             consolidated_output_buffer.seek(0) # Rewind the buffer to the beginning after writing
@@ -1116,13 +1117,13 @@ def process_files():
             if os.path.exists(temp_dir_for_uploads): shutil.rmtree(temp_dir_for_uploads)
             return redirect(url_for('index'))
 
-        # Store the buffer and filename in session
-        session['central_output_data'] = consolidated_output_buffer.getvalue()
+        # Encode the buffer content to base64 and store in session
+        session['central_output_data'] = base64.b64encode(consolidated_output_buffer.getvalue()).decode('utf-8')
         session['central_output_filename'] = final_central_output_filename
 
 
         return render_template('index.html',
-                                central_download_link=url_for('download_consolidated_file')) # Changed download route name
+                                central_download_link=url_for('download_consolidated_file'))
 
     except Exception as e:
         flash(f'An unhandled error occurred during consolidated processing: {e}', 'error')
@@ -1206,13 +1207,13 @@ def process_pmd_lookup():
             if os.path.exists(temp_dir_for_uploads): shutil.rmtree(temp_dir_for_uploads)
             return redirect(url_for('index'))
 
-        # Store the buffer and filename in session
-        session['pmd_output_data'] = pmd_output_buffer.getvalue()
+        # Encode the buffer content to base64 and store in session
+        session['pmd_output_data'] = base64.b64encode(pmd_output_buffer.getvalue()).decode('utf-8')
         session['pmd_output_filename'] = pmd_output_filename
         
         flash('PMD Lookup process completed successfully, file contains two sheets!', 'success')
         return render_template('index.html',
-                               pmd_download_link=url_for('download_pmd_file')) # Changed download route name
+                               pmd_download_link=url_for('download_pmd_file'))
 
     except Exception as e:
         flash(f'An unhandled error occurred during PMD Lookup: {e}', 'error')
@@ -1228,17 +1229,25 @@ def process_pmd_lookup():
 
 @app.route('/download_consolidated_file', methods=['GET']) # Renamed route
 def download_consolidated_file():
-    # Retrieve data and filename from session
-    output_data = session.pop('central_output_data', None)
-    output_filename = session.pop('central_output_filename', None)
+    # Retrieve base64 encoded data and filename from session
+    encoded_output_data = session.get('central_output_data')
+    output_filename = session.get('central_output_filename')
 
-    if output_data is None or output_filename is None:
+    if encoded_output_data is None or output_filename is None:
         logger.warning("Consolidated output data not found in session for download.")
         flash('File not found for download or session expired. Please re-run the process.', 'error')
         return redirect(url_for('index'))
+    
+    # Decode the base64 data back to bytes
+    output_data = base64.b64decode(encoded_output_data)
 
     logger.info(f"Attempting to send consolidated file: {output_filename}")
     try:
+        # Clear the session data AFTER successful retrieval and BEFORE sending
+        # This prevents accidental re-downloads or using stale data.
+        session.pop('central_output_data', None)
+        session.pop('central_output_filename', None)
+        
         return send_file(
             BytesIO(output_data),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1252,17 +1261,24 @@ def download_consolidated_file():
 
 @app.route('/download_pmd_file', methods=['GET']) # Renamed route
 def download_pmd_file():
-    # Retrieve data and filename from session
-    output_data = session.pop('pmd_output_data', None)
-    output_filename = session.pop('pmd_output_filename', None)
+    # Retrieve base64 encoded data and filename from session
+    encoded_output_data = session.get('pmd_output_data')
+    output_filename = session.get('pmd_output_filename')
 
-    if output_data is None or output_filename is None:
+    if encoded_output_data is None or output_filename is None:
         logger.warning("PMD output data not found in session for download.")
         flash('PMD result file not found for download or session expired. Please re-run the PMD Lookup process.', 'error')
         return redirect(url_for('index'))
+    
+    # Decode the base64 data back to bytes
+    output_data = base64.b64decode(encoded_output_data)
 
     logger.info(f"Attempting to send PMD lookup file: {output_filename}")
     try:
+        # Clear the session data AFTER successful retrieval and BEFORE sending
+        session.pop('pmd_output_data', None)
+        session.pop('pmd_output_filename', None)
+
         return send_file(
             BytesIO(output_data),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1276,15 +1292,15 @@ def download_pmd_file():
 
 @app.route('/cleanup_session', methods=['GET'])
 def cleanup_session():
-    # This function is now less critical for file cleanup as files are in memory or deleted promptly.
-    # It mostly ensures session variables are reset.
+    # Pop all relevant session keys
     session.pop('central_output_data', None)
     session.pop('central_output_filename', None)
     session.pop('pmd_output_data', None)
     session.pop('pmd_output_filename', None)
-    session.pop('region_map', None)
-    
-    flash('Session data cleaned up.', 'info') # Updated message
+    session.pop('region_map', None) # This can be cleaned up as well
+
+    # Flash message to confirm cleanup
+    flash('Session data cleaned up.', 'info')
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
