@@ -13,27 +13,10 @@ warnings.filterwarnings('ignore')
 
 # --- Vercel Specific Path Configuration ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Corrected paths for Vercel if app.py is directly in the root of the deployment
-# If your app.py is in a 'api' folder (e.g., api/app.py), these paths are correct relative to the base project folder.
-# If app.py is at the top level of your project, they should be:
-template_dir = os.path.join(BASE_DIR, 'templates') # Assuming templates/index.html
-static_dir = os.path.join(BASE_DIR, 'static')     # Assuming static/styles.css etc.
+template_dir = os.path.join(BASE_DIR, '..', 'templates')
+static_dir = os.path.join(BASE_DIR, '..', 'static')
 
-# If your structure is api/app.py, templates/, static/ then:
-# template_dir = os.path.join(BASE_DIR, '..', 'templates')
-# static_dir = os.path.join(BASE_DIR, '..', 'static')
-
-# Let's assume the project structure where app.py is at the root or within 'api/' but template/static are adjacent to 'api' or root
-if os.path.exists(os.path.join(BASE_DIR, 'templates')) and os.path.exists(os.path.join(BASE_DIR, 'static')):
-    template_dir = os.path.join(BASE_DIR, 'templates')
-    static_dir = os.path.join(BASE_DIR, 'static')
-elif os.path.exists(os.path.join(BASE_DIR, '..', 'templates')) and os.path.exists(os.path.join(BASE_DIR, '..', 'static')):
-    template_dir = os.path.join(BASE_DIR, '..', 'templates')
-    static_dir = os.path.join(BASE_DIR, '..', 'static')
-else: # Fallback to original, might need adjustment based on final Vercel structure
-    template_dir = os.path.join(BASE_DIR, '..', 'templates')
-    static_dir = os.path.join(BASE_DIR, '..', 'static')
-
+# Initialize Flask app
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key_for_local_dev_only')
@@ -53,10 +36,11 @@ PMD_OUTPUT_COLUMNS_SHEET1 = [ # Specific columns for Sheet1 (original format)
 
 
 # --- Configure Logging ---
+# REMOVED FileHandler for Vercel deployment compatibility
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s',
                     handlers=[
-                        logging.StreamHandler()
+                        logging.StreamHandler() # Only stream handler for Vercel logs
                     ])
 logger = logging.getLogger(__name__)
 
@@ -112,27 +96,16 @@ def find_column_robust(df, target_column_keywords):
     if df.empty:
         return None
 
-    # Get a list of cleaned original column names once for efficiency
-    cleaned_df_cols = [clean_col_name_str(col) for col in df.columns]
-    
-    # Process target keywords
-    target_keywords_processed = clean_col_name_str(target_column_keywords)
-    if not target_keywords_processed: # Handle empty string after cleaning
-        return None
-    
-    target_keywords_first_word = target_keywords_processed.split('_')[0]
-
+    df_cols = [str(col).lower() for col in df.columns]
+    target_keywords_processed = str(target_column_keywords).strip().lower().split()[0] # Only first word
 
     for original_col in df.columns:
-        cleaned_col_name = clean_col_name_str(original_col)
-        # Check if the cleaned column name (or its first word) matches the target
-        if cleaned_col_name == target_keywords_processed:
-            return original_col # Exact match of cleaned names
-        
-        if cleaned_col_name.startswith(target_keywords_first_word):
-             # Also check if it's a first word match, e.g., 'company_code' for 'company code'
-             # This means we prefer exact match, then first word match
-             return original_col
+        cleaned_col = str(original_col).strip().lower()
+        # Handle cases like "company_code" or "company code"
+        cleaned_col_first_word = cleaned_col.split('_')[0] if '_' in cleaned_col else cleaned_col.split(' ')[0]
+
+        if cleaned_col_first_word == target_keywords_processed:
+            return original_col
     return None
 
 # Helper to clean a single string for .get() after find_column_robust
@@ -481,7 +454,6 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
 
     # --- REGION MAPPING LOGIC --- (Applied here for PISA/ESM/PM7 and then for Workon RGBA below)
     logger.info("\n--- Applying Region Mapping ---")
-    global_region_map = {} # Initialize empty map
     if region_mapping_df is None or region_mapping_df.empty:
         logger.warning("Warning: Region mapping file not provided or is empty. Region column will not be populated for PISA/ESM/PM7 data.")
         df_final_central['Region'] = df_final_central['Region'].fillna('')
@@ -491,6 +463,8 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df_pisa
             logger.error("Error: Region mapping file must contain 'r3_coco' and 'region' columns after cleaning. Skipping region mapping for PISA/ESM/PM7 data.")
             df_final_central['Region'] = df_final_central['Region'].fillna('')
         else:
+            # Store the region_map for later use with RGBA and other data
+            global_region_map = {}
             for idx, row in region_mapping_df.iterrows():
                 coco_key = str(row['r3_coco']).strip().upper()
                 if coco_key:
@@ -812,8 +786,7 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
     missing_required_pmd_cols = [k for k, v in required_pmd_cols.items() if v is None]
     if missing_required_pmd_cols:
         logger.error(f"Missing one or more required columns for PMD Lookup comparison: {missing_required_pmd_cols}")
-        # Return a tuple consistent with the expected return type (False, error_message, None for df_sheet2)
-        return False, f"Missing one or more required columns for PMD Lookup comparison: {missing_required_pmd_cols}", None
+        return False, f"Missing one or more required columns for PMD Lookup comparison: {missing_required_pmd_cols}", None # Return 3 items for consistency
 
     # Get cleaned column names for internal use (from the *original* found names)
     valid_from_dump_col_cleaned = clean_col_name_str(valid_from_dump_col_raw)
@@ -865,7 +838,6 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
         # Re-using df_pmd_dump_raw for find_column_robust to get original column names for Sheet 1
         robust_found_raw_col = find_column_robust(df_pmd_dump_raw, col_name) 
         if robust_found_raw_col:
-            # Need to get the data using the *cleaned* column name from unique_dump_rows_for_sheet_generation
             df_sheet1[col_name] = unique_dump_rows_for_sheet_generation[clean_col_name_str(robust_found_raw_col)]
         else:
             df_sheet1[col_name] = ''
@@ -928,36 +900,23 @@ def pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw):
 
 @app.route('/', methods=['GET'])
 def index():
-    # Keep track of active download links to display on the page
-    central_download_link = None
-    pmd_download_link = None
-
-    if 'central_output_path' in session:
-        central_download_link = url_for('download_file', filename=os.path.basename(session['central_output_path']))
-    if 'pmd_output_path' in session:
-        pmd_download_link = url_for('download_pmd_file', filename=os.path.basename(session['pmd_output_path']))
-
-    return render_template('index.html', 
-                           central_download_link=central_download_link,
-                           pmd_download_link=pmd_download_link)
+    # Clear any previous download links when returning to index
+    session.pop('central_output_path', None)
+    session.pop('pmd_output_path', None)
+    return render_template('index.html')
 
 @app.route('/process', methods=['POST'])
 def process_files():
-    # Each request to /process gets its own temp directory
-    temp_dir = tempfile.mkdtemp(dir='/tmp') # Ensure this path is writable on Vercel
+    temp_dir = tempfile.mkdtemp(dir='/tmp')
 
-    # Store this specific temp_dir for later cleanup
-    # We'll overwrite any old one, assuming only one consolidated process is active at a time
-    session['temp_dir_consolidated'] = temp_dir 
-    
-    # Also clear region_map specific to this process for fresh run
+    # Clear all relevant session data for a fresh start for this process
+    session.pop('central_output_path', None)
+    session.pop('temp_dir_consolidated', None) # Renamed to avoid clash
     session.pop('region_map', None)
+    
+    session['temp_dir_consolidated'] = temp_dir # Store consolidated temp dir
 
-    REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, 'company_code_region_mapping.xlsx')
-    # Adjusted path for vercel if app.py is in 'api' folder and company_code_region_mapping.xlsx is at root
-    if not os.path.exists(REGION_MAPPING_FILE_PATH) and os.path.exists(os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')):
-        REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')
-
+    REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')
 
     try:
         uploaded_files = {}
@@ -971,7 +930,8 @@ def process_files():
         for key in mandatory_file_keys:
             if key not in request.files or request.files[key].filename == '':
                 flash(f'Missing mandatory file: "{key}". All PISA, ESM, PM7, and Central files are required.', 'error')
-                # No `rmtree` here, `cleanup_session` will handle it later or Vercel's ephemeral nature
+                if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+                session.pop('temp_dir_consolidated', None)
                 return redirect(url_for('index'))
             
             file = request.files[key]
@@ -983,6 +943,8 @@ def process_files():
                 logger.info(f'File "{filename}" uploaded successfully.')
             else:
                 flash(f'Invalid file type for "{key}". Please upload an .xlsx file.', 'error')
+                if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+                session.pop('temp_dir_consolidated', None)
                 return redirect(url_for('index'))
 
         # Process optional files
@@ -1039,6 +1001,9 @@ def process_files():
         except Exception as e:
             flash(f"Error loading one or more input Excel files or the region mapping file: {e}. Please ensure all files are valid .xlsx formats and the mapping file exists.", 'error')
             logger.error(f"Error loading input files: {e}")
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            session.pop('temp_dir_consolidated', None)
             return redirect(url_for('index'))
 
 
@@ -1065,6 +1030,8 @@ def process_files():
         )
         if not success:
             flash(f'Central File Processing (Step 2) Error: {df_central_updated_existing}', 'error')
+            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+            session.pop('temp_dir_consolidated', None)
             return redirect(url_for('index'))
 
         # --- Step 3: Final Merge (Add new PISA/ESM/PM7 barcodes, mark 'Needs Review', apply Region Mapping) ---
@@ -1073,6 +1040,8 @@ def process_files():
         )
         if not success:
             flash(f'Central File Processing (Step 3) Error: {df_final_central_pisa_esm_pm7}', 'error')
+            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+            session.pop('temp_dir_consolidated', None)
             return redirect(url_for('index'))
         flash('Central file updated and merged with PISA, ESM, PM7 data successfully!', 'success')
 
@@ -1122,21 +1091,22 @@ def process_files():
         # --- FINAL AGING CALCULATION ---
         logger.info("\n--- Calculating Aging for blank entries ---")
         # Convert date columns to datetime objects for calculation, coercing errors to NaT
-        df_ultimate_final_central['Received Date_dt'] = pd.to_datetime(df_ultimate_final_central['Received Date'], format='%m/%d/%Y', errors='coerce')
+        # Need 'Today' and 'Allocation Date' for the calculation
+        df_ultimate_final_central['Today_dt'] = pd.to_datetime(df_ultimate_final_central['Today'], format='%m/%d/%Y', errors='coerce')
         df_ultimate_final_central['Allocation Date_dt'] = pd.to_datetime(df_ultimate_final_central['Allocation Date'], format='%m/%d/%Y', errors='coerce')
 
-        # Identify rows where 'Aging' is blank/empty and both dates are valid
+        # Identify rows where 'Aging' is blank/empty and both dates are valid for calculation
         aging_mask = (df_ultimate_final_central['Aging'].fillna('').astype(str).str.strip() == '') & \
-                     (df_ultimate_final_central['Received Date_dt'].notna()) & \
+                     (df_ultimate_final_central['Today_dt'].notna()) & \
                      (df_ultimate_final_central['Allocation Date_dt'].notna())
 
-        # Calculate aging and convert to integer days
+        # Calculate aging as (Today - Allocation Date) and convert to integer days
         df_ultimate_final_central.loc[aging_mask, 'Aging'] = \
-            (df_ultimate_final_central.loc[aging_mask, 'Allocation Date_dt'] - \
-             df_ultimate_final_central.loc[aging_mask, 'Received Date_dt']).dt.days.astype(str)
+            (df_ultimate_final_central.loc[aging_mask, 'Today_dt'] - \
+             df_ultimate_final_central.loc[aging_mask, 'Allocation Date_dt']).dt.days.astype(str)
 
         # Clean up temporary date columns
-        df_ultimate_final_central = df_ultimate_final_central.drop(columns=['Received Date_dt', 'Allocation Date_dt'])
+        df_ultimate_final_central = df_ultimate_final_central.drop(columns=['Today_dt', 'Allocation Date_dt'])
         logger.info(f"Calculated Aging for {aging_mask.sum()} entries.")
         # --- END FINAL AGING CALCULATION ---
 
@@ -1150,28 +1120,37 @@ def process_files():
         except Exception as e:
             flash(f"Error saving final central file: {e}", 'error')
             logger.error(f"Error saving final central file: {e}")
+            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+            session.pop('temp_dir_consolidated', None)
             return redirect(url_for('index'))
 
         session['central_output_path'] = final_central_output_file_path
 
-        # Redirect to index to display download link and flash messages
-        return redirect(url_for('index'))
+        return render_template('index.html',
+                                central_download_link=url_for('download_file', filename=os.path.basename(final_central_output_file_path))
+                              )
 
     except Exception as e:
         flash(f'An unhandled error occurred during processing: {e}', 'error')
         logger.exception("Unhandled error during consolidated file processing:")
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        session.pop('temp_dir_consolidated', None)
         return redirect(url_for('index'))
     finally:
-        # DO NOT DELETE temp_dir here. It needs to persist for download.
         pass
 
 
 # --- NEW ROUTE FOR PMD LOOKUP ---
 @app.route('/process_pmd_lookup', methods=['POST'])
 def process_pmd_lookup():
-    temp_dir = tempfile.mkdtemp(dir='/tmp') # New temp directory for each PMD lookup process
+    temp_dir = tempfile.mkdtemp(dir='/tmp')
 
-    session['temp_dir_pmd'] = temp_dir # Store this specific temp_dir for later cleanup
+    # Clear session data specific to PMD lookup for a fresh start
+    session.pop('pmd_output_path', None)
+    session.pop('temp_dir_pmd', None) # New session key for PMD temp dir
+
+    session['temp_dir_pmd'] = temp_dir # Store PMD temp dir
 
     try:
         pmd_dump_file = request.files.get('pmd_dump_file')
@@ -1207,7 +1186,7 @@ def process_pmd_lookup():
         success, result_or_error_msg, df_sheet2 = pmd_lookup_process_function(df_pmd_dump_raw, df_pmd_central_raw)
 
         if not success:
-            flash(f'PMD Lookup failed: {result_or_error_msg}', 'error') # result_or_error_msg contains error message on failure
+            flash(f'PMD Lookup failed: {result_or_error_msg}', 'error') # df_sheet1 contains error message on failure
             logger.error(f"PMD Lookup process failed: {result_or_error_msg}")
             return redirect(url_for('index'))
 
@@ -1228,83 +1207,108 @@ def process_pmd_lookup():
         except Exception as e:
             flash(f"Error saving PMD Lookup result file with multiple sheets: {e}", 'error')
             logger.error(f"Error saving PMD Lookup result file: {e}")
+            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+            session.pop('temp_dir_pmd', None)
             return redirect(url_for('index'))
 
         session['pmd_output_path'] = pmd_output_file_path
         flash('PMD Lookup process completed successfully, file contains two sheets!', 'success')
-        return redirect(url_for('index')) # Redirect to index to display download link and flash messages
+        return render_template('index.html',
+                               pmd_download_link=url_for('download_pmd_file', filename=os.path.basename(pmd_output_file_path)))
 
     except Exception as e:
         flash(f'An unhandled error occurred during PMD Lookup: {e}', 'error')
         logger.exception("Unhandled error during PMD Lookup processing:")
+        if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+        session.pop('temp_dir_pmd', None)
         return redirect(url_for('index'))
     finally:
-        # DO NOT DELETE temp_dir here. It needs to persist for download.
         pass
 
 @app.route('/download/<filename>', methods=['GET'])
 def download_file(filename):
     # This route handles the consolidated central file download
-    temp_dir_consolidated = session.get('temp_dir_consolidated')
+    file_path_in_temp = None
+    temp_dir = session.get('temp_dir_consolidated') # Use consolidated temp_dir
 
-    if not temp_dir_consolidated or not os.path.exists(temp_dir_consolidated):
-        logger.warning(f"Consolidated temp_dir {temp_dir_consolidated} not found or does not exist.")
+    logger.info(f"Download requested for consolidated file: {filename}")
+
+    if not temp_dir:
+        logger.warning("Consolidated temp_dir not found in session.")
         flash('File not found for download or session expired. Please re-run the process.', 'error')
         return redirect(url_for('index'))
 
-    file_path = os.path.join(temp_dir_consolidated, filename)
+    central_session_path = session.get('central_output_path')
 
-    if os.path.exists(file_path):
-        logger.info(f"Sending consolidated file: {file_path}")
+    if central_session_path and os.path.basename(central_session_path) == filename:
+        file_path_in_temp = os.path.join(temp_dir, filename)
+        logger.info(f"Matched consolidated central file. Reconstructed path: {file_path_in_temp}")
+    else:
+        logger.warning(f"Filename '{filename}' did not match the final central output file in session.")
+
+    if file_path_in_temp and os.path.exists(file_path_in_temp):
+        logger.info(f"File '{file_path_in_temp}' exists. Attempting to send.")
         try:
-            return send_file(
-                file_path,
+            response = send_file(
+                file_path_in_temp,
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 as_attachment=True,
                 download_name=filename
             )
+            return response
         except Exception as e:
-            logger.error(f"Exception while sending consolidated file '{file_path}': {e}")
+            logger.error(f"Exception while sending consolidated file '{file_path_in_temp}': {e}")
             flash(f'Error providing download: {e}. Please try again.', 'error')
             return redirect(url_for('index'))
     else:
-        logger.warning(f"Consolidated file '{file_path}' not found for download.")
+        logger.warning(f"File '{filename}' not found for download or session data missing/expired. Full path attempted: {file_path_in_temp}")
         flash('File not found for download or session expired. Please re-run the process.', 'error')
         return redirect(url_for('index'))
 
+# --- NEW DOWNLOAD ROUTE FOR PMD LOOKUP RESULT ---
 @app.route('/download_pmd_file/<filename>', methods=['GET'])
 def download_pmd_file(filename):
-    temp_dir_pmd = session.get('temp_dir_pmd')
+    file_path_in_temp = None
+    temp_dir = session.get('temp_dir_pmd') # Use PMD specific temp_dir
 
-    if not temp_dir_pmd or not os.path.exists(temp_dir_pmd):
-        logger.warning(f"PMD temp_dir {temp_dir_pmd} not found or does not exist.")
+    logger.info(f"Download requested for PMD lookup file: {filename}")
+
+    if not temp_dir:
+        logger.warning("PMD temp_dir not found in session.")
         flash('PMD result file not found for download or session expired. Please re-run the PMD Lookup process.', 'error')
         return redirect(url_for('index'))
 
-    file_path = os.path.join(temp_dir_pmd, filename)
+    pmd_session_path = session.get('pmd_output_path')
 
-    if os.path.exists(file_path):
-        logger.info(f"Sending PMD lookup file: {file_path}")
+    if pmd_session_path and os.path.basename(pmd_session_path) == filename:
+        file_path_in_temp = os.path.join(temp_dir, filename)
+        logger.info(f"Matched PMD lookup result file. Reconstructed path: {file_path_in_temp}")
+    else:
+        logger.warning(f"Filename '{filename}' did not match the PMD lookup output file in session.")
+
+    if file_path_in_temp and os.path.exists(file_path_in_temp):
+        logger.info(f"File '{file_path_in_temp}' exists. Attempting to send.")
         try:
-            return send_file(
-                file_path,
+            response = send_file(
+                file_path_in_temp,
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 as_attachment=True,
                 download_name=filename
             )
+            return response
         except Exception as e:
-            logger.error(f"Exception while sending PMD lookup file '{file_path}': {e}")
+            logger.error(f"Exception while sending PMD lookup file '{file_path_in_temp}': {e}")
             flash(f'Error providing PMD download: {e}. Please try again.', 'error')
             return redirect(url_for('index'))
     else:
-        logger.warning(f"PMD lookup file '{file_path}' not found for download.")
+        logger.warning(f"File '{filename}' not found for download or session data missing/expired. Full path attempted: {file_path_in_temp}")
         flash('PMD result file not found for download or session expired. Please re-run the PMD Lookup process.', 'error')
         return redirect(url_for('index'))
 
-@app.route('/cleanup_session', methods=['POST']) # Changed to POST for better practice
+@app.route('/cleanup_session', methods=['GET'])
 def cleanup_session():
     # Cleanup for consolidated process
-    temp_dir_consolidated = session.pop('temp_dir_consolidated', None)
+    temp_dir_consolidated = session.get('temp_dir_consolidated')
     if temp_dir_consolidated and os.path.exists(temp_dir_consolidated):
         try:
             shutil.rmtree(temp_dir_consolidated)
@@ -1313,11 +1317,12 @@ def cleanup_session():
         except OSError as e:
             logger.error(f"Error removing consolidated temporary directory {temp_dir_consolidated}: {e}")
             flash(f'Error cleaning up consolidated temporary files: {e}', 'error')
+    session.pop('temp_dir_consolidated', None)
     session.pop('central_output_path', None)
-    session.pop('region_map', None) # Clear region map if it was stored
+    session.pop('region_map', None)
 
     # Cleanup for PMD lookup process
-    temp_dir_pmd = session.pop('temp_dir_pmd', None)
+    temp_dir_pmd = session.get('temp_dir_pmd')
     if temp_dir_pmd and os.path.exists(temp_dir_pmd):
         try:
             shutil.rmtree(temp_dir_pmd)
@@ -1326,6 +1331,7 @@ def cleanup_session():
         except OSError as e:
             logger.error(f"Error removing PMD temporary directory {temp_dir_pmd}: {e}")
             flash(f'Error cleaning up PMD temporary files: {e}', 'error')
+    session.pop('temp_dir_pmd', None)
     session.pop('pmd_output_path', None)
     
     return redirect(url_for('index'))
