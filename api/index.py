@@ -1091,21 +1091,22 @@ def process_files():
         # --- FINAL AGING CALCULATION ---
         logger.info("\n--- Calculating Aging for blank entries ---")
         # Convert date columns to datetime objects for calculation, coercing errors to NaT
-        df_ultimate_final_central['Received Date_dt'] = pd.to_datetime(df_ultimate_final_central['Received Date'], format='%m/%d/%Y', errors='coerce')
+        # Need 'Today' and 'Allocation Date' for the calculation
+        df_ultimate_final_central['Today_dt'] = pd.to_datetime(df_ultimate_final_central['Today'], format='%m/%d/%Y', errors='coerce')
         df_ultimate_final_central['Allocation Date_dt'] = pd.to_datetime(df_ultimate_final_central['Allocation Date'], format='%m/%d/%Y', errors='coerce')
 
-        # Identify rows where 'Aging' is blank/empty and both dates are valid
+        # Identify rows where 'Aging' is blank/empty and both dates are valid for calculation
         aging_mask = (df_ultimate_final_central['Aging'].fillna('').astype(str).str.strip() == '') & \
-                     (df_ultimate_final_central['Received Date_dt'].notna()) & \
+                     (df_ultimate_final_central['Today_dt'].notna()) & \
                      (df_ultimate_final_central['Allocation Date_dt'].notna())
 
-        # Calculate aging and convert to integer days
+        # Calculate aging as (Today - Allocation Date) and convert to integer days
         df_ultimate_final_central.loc[aging_mask, 'Aging'] = \
-            (df_ultimate_final_central.loc[aging_mask, 'Allocation Date_dt'] - \
-             df_ultimate_final_central.loc[aging_mask, 'Received Date_dt']).dt.days.astype(str)
+            (df_ultimate_final_central.loc[aging_mask, 'Today_dt'] - \
+             df_ultimate_final_central.loc[aging_mask, 'Allocation Date_dt']).dt.days.astype(str)
 
         # Clean up temporary date columns
-        df_ultimate_final_central = df_ultimate_final_central.drop(columns=['Received Date_dt', 'Allocation Date_dt'])
+        df_ultimate_final_central = df_ultimate_final_central.drop(columns=['Today_dt', 'Allocation Date_dt'])
         logger.info(f"Calculated Aging for {aging_mask.sum()} entries.")
         # --- END FINAL AGING CALCULATION ---
 
